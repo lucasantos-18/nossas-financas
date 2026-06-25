@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
 :root{
   --ink:#10302F; --ink-soft:#234B49; --paper:#EAEEED; --paper-2:#E0E6E4;
@@ -307,6 +308,43 @@ td.out{color:var(--saida);font-weight:600}
   .sheet{border-radius:22px;max-width:600px;max-height:88vh}
   .emoji-grid{grid-template-columns:repeat(10,1fr)}
 }
+/* ===== MERCADO ===== */
+.merc-actions{display:flex;gap:10px;margin:6px 0 16px}
+.merc-actions .btn{width:auto;flex:1}
+.store-logo{width:42px;height:42px;border-radius:12px;background:var(--paper-2);display:grid;place-items:center;font-size:20px;flex:none;overflow:hidden}
+.store-logo img{width:100%;height:100%;object-fit:cover}
+.store-logo.lg{width:56px;height:56px;border-radius:15px;font-size:26px}
+.trend-up{color:var(--saida)}.trend-down{color:var(--entrada)}.trend-flat{color:var(--muted-2)}
+.ph-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.ph-row:last-child{border-bottom:none}
+.mini-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px}
+.pill-min{background:var(--entrada-bg);color:var(--entrada)}
+.pill-max{background:var(--saida-bg);color:var(--saida)}
+.item-line{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+.item-line .il-mid{flex:1;min-width:0}
+.item-add{background:var(--paper-2);border:1px dashed var(--line);border-radius:14px;padding:12px;margin-bottom:14px}
+.item-add .grid3{display:grid;grid-template-columns:1.4fr .8fr .9fr;gap:8px}
+.item-add .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+#qrReader{width:100%;border-radius:16px;overflow:hidden;background:#000}
+#qrReader video{border-radius:16px}
+.big-stat{font-family:var(--display);font-weight:600;font-size:32px;letter-spacing:-.025em;line-height:1}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.stat-box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px}
+.stat-box .sl{font-size:11px;color:var(--muted);font-weight:600}
+.stat-box .sv{font-family:var(--display);font-weight:600;font-size:17px;margin-top:3px}
+.canon-tag{font-size:11px;color:var(--muted);font-weight:600}
+.prod-row .pp{font-family:var(--display);font-weight:600;font-size:15px;text-align:right;white-space:nowrap}
+.seg-sm{display:flex;background:var(--paper-2);border-radius:11px;padding:3px;width:fit-content}
+.seg-sm button{padding:7px 13px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg-sm button.on{background:var(--surface);box-shadow:var(--shadow);color:var(--ink)}
+@media(min-width:900px){
+  .merc-actions{max-width:440px}
+  .merc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .merc-two{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start}
+}
+/* bottom nav with 6 items */
+.nav-inner.six .nav-btn{font-size:9px}
+.nav-inner.six .nav-btn svg{width:21px;height:21px}
 </style>
 </head>
 <body>
@@ -319,7 +357,7 @@ td.out{color:var(--saida);font-weight:600}
     <p>Controle de gastos, em qualquer lugar.</p>
   </div>
   <div class="auth-card">
-    <div id="g_id_onload" data-client_id="YOUR_CLIENT_ID" data-callback="handleCredentialResponse"></div>
+    <div id="g_id_onload" data-client_id="699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googleusercontent.com" data-callback="handleCredentialResponse"></div>
     <div class="g_id_signin" data-type="standard" data-size="large" data-theme="light" style="margin:18px auto;display:flex;justify-content:center"></div>
     <p class="auth-note" style="margin-top:22px">Você entra com sua conta Google. Os dados ficam guardados numa planilha sua no Google Drive.</p>
   </div>
@@ -334,6 +372,7 @@ td.out{color:var(--saida);font-weight:600}
     <nav class="side-nav">
       <button class="side-btn on" data-scr="home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</button>
       <button class="side-btn" data-scr="tx" onclick="go('tx')"><svg viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3"/></svg>Lançamentos</button>
+      <button class="side-btn" data-scr="mercado" onclick="go('mercado')"><svg viewBox="0 0 24 24"><path d="M5 6h16l-2 9H7zM5 6 4 3H2m5 18a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm11 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>Mercado</button>
       <button class="side-btn" data-scr="charts" onclick="go('charts')"><svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>Análise</button>
       <button class="side-btn" data-scr="budget" onclick="go('budget')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Orçamento</button>
       <button class="side-btn" data-scr="cats" onclick="go('cats')"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Categorias</button>
@@ -382,6 +421,11 @@ td.out{color:var(--saida);font-weight:600}
       </div>
 
       <div class="kpi-grid" id="homeKpis" style="margin-top:14px"></div>
+
+      <button class="card" onclick="go('mercado')" style="display:flex;align-items:center;gap:12px;padding:14px;margin-top:14px;width:100%;text-align:left">
+        <div class="store-logo" style="background:rgba(22,97,94,.12);color:var(--teal)">🛒</div>
+        <div style="flex:1"><div style="font-weight:600">Mercado</div><div style="font-size:12px;color:var(--muted)">Compras pela nota fiscal, preços e histórico de produtos</div></div>
+        <span class="chev">›</span></button>
 
       <div class="dash-cols">
         <div class="dash-main desk-only">
@@ -468,14 +512,33 @@ td.out{color:var(--saida);font-weight:600}
       </div>
       <p style="text-align:center;font-size:11px;color:var(--muted-2);margin-top:22px">Nossas Finanças · protótipo</p>
     </section>
+
+    <!-- MERCADO -->
+    <section class="screen" id="scr-mercado">
+      <div class="merc-actions">
+        <button class="btn btn-primary" onclick="mercNewPurchase()"><span style="font-size:18px;margin-right:2px">+</span> Nova compra</button>
+        <button class="btn btn-ghost" onclick="mercOpenScan()">📷 Escanear nota</button>
+      </div>
+      <div class="seg" style="margin-bottom:16px">
+        <button id="mtab-compras" class="on" onclick="mercSetTab('compras')">Compras</button>
+        <button id="mtab-produtos" onclick="mercSetTab('produtos')">Produtos</button>
+        <button id="mtab-categorias" onclick="mercSetTab('categorias')">Categorias</button>
+        <button id="mtab-mercados" onclick="mercSetTab('mercados')">Mercados</button>
+      </div>
+      <div id="merc-compras"></div>
+      <div id="merc-produtos" class="hidden"></div>
+      <div id="merc-categorias" class="hidden"></div>
+      <div id="merc-mercados" class="hidden"></div>
+    </section>
   </div></div>
 
   <!-- bottom nav (mobile) -->
-  <div class="nav"><div class="nav-inner">
+  <div class="nav"><div class="nav-inner six">
     <button class="nav-btn on" data-scr="home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</button>
     <button class="nav-btn" data-scr="tx" onclick="go('tx')"><svg viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3"/></svg>Lançar</button>
+    <button class="nav-btn" data-scr="mercado" onclick="go('mercado')"><svg viewBox="0 0 24 24"><path d="M5 6h16l-2 9H7zM5 6 4 3H2m5 18a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm11 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>Mercado</button>
     <button class="nav-btn" data-scr="charts" onclick="go('charts')"><svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>Análise</button>
-    <button class="nav-btn" data-scr="budget" onclick="go('budget')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Orçamento</button>
+    <button class="nav-btn" data-scr="budget" onclick="go('budget')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Orçam.</button>
     <button class="nav-btn" data-scr="config" onclick="go('config')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.3l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.2-1.3L14 2h-4l-.4 2.5a7 7 0 0 0-2.2 1.3l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .9.1 1.3l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2.2 1.3L10 22h4l.4-2.5a7 7 0 0 0 2.2-1.3l2.3 1 2-3.4-2-1.5c.1-.4.1-.9.1-1.3z"/></svg>Ajustes</button>
   </div></div>
   <button class="fab" onclick="openTx()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -487,8 +550,8 @@ td.out{color:var(--saida);font-weight:600}
 
 <script>
 /* ===== STORAGE (Google Sheets) ===== */
-const SHEET_ID='1TMzDLDUkEtfaB3a7OGC2LMoRrEMvwy2Uw5E4wyESgMc'; // você vai preencher isso após criar a planilha
-const GOOGLE_CLIENT_ID='699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googleusercontent.com'; // você vai gerar isso no Google Cloud Console
+const SHEET_ID='1TMzDLDUkEtfaB3a7OGC2LMoRrEMvwy2Uw5E4wyESgMc';
+const GOOGLE_CLIENT_ID='699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googleusercontent.com';
 let googleAuth=null, googleAccessToken=null;
 
 async function initGoogleAuth(){
@@ -556,7 +619,7 @@ const cleanUser=u=>(u||'').toLowerCase().trim().replace(/[^a-z0-9._-]/g,'');
 let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
-const SCHEMA=4;
+const SCHEMA=5;
 function ymKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function slug(s){return 'cat_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
@@ -597,7 +660,12 @@ function seedFormas(){return[
   {id:'forma_pix',name:'Pix',emoji:'⚡',color:'#1B8A5A'},
   {id:'forma_mumbuca',name:'Mumbuca',emoji:'🪙',color:'#D8982F'},
   {id:'forma_dinheiro',name:'Dinheiro',emoji:'💵',color:'#2E9E6F'}];}
-function seed(){return{version:SCHEMA,formas:seedFormas(),categories:seedCategories(),transactions:[],budgets:{},goals:[],settings:{}};}
+function seed(){return{version:SCHEMA,formas:seedFormas(),categories:seedCategories(),transactions:[],budgets:{},goals:[],settings:{},mercado:seedMercado()};}
+function slug2(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+function seedMercCats(){const L=[['Hortifruti','🥬'],['Açougue','🥩'],['Padaria','🥖'],['Laticínios','🧀'],['Frios e Embutidos','🥓'],['Mercearia','🛒'],['Bebidas','🥤'],['Limpeza','🧽'],['Higiene','🧴'],['Congelados','🧊'],['Doces e Snacks','🍫'],['Pet','🐾'],['Bebê','🍼'],['Outros','📦']];
+  const col=['#1B8A5A','#C9472E','#D8982F','#E8C24A','#B5651D','#16615E','#5B7DB1','#3FB57E','#9B5BB1','#5AAEC9','#D5503A','#8A6A4F','#E89AB5','#62736F'];
+  return L.map(([n,e],i)=>({id:'mc_'+slug2(n),name:n,emoji:e,color:col[i%col.length],order:i}));}
+function seedMercado(){return{stores:[],categories:seedMercCats(),products:[],purchases:[],items:[]};}
 
 const EMOJIS=['💰','💵','💸','🪙','💳','🏦','📈','📉','🧾','🏷️','🛒','🍽️','🍔','🍕','☕','🍰','🥞','🍻','🍷','🥗',
  '🚗','🚙','⛽','🔵','🛢️','🛣️','🚧','🅿️','🚕','🚌','🚲','✈️','🏖️','🗺️','🏠','🏡','🔧','🔨','🛋️','🪑','🧹','🧺',
@@ -659,6 +727,13 @@ function migrate(){
     DB.version=4;
   }
   DB.categories.forEach((c,i)=>{if(c.order==null)c.order=i;});
+  // Mercado module (v5)
+  DB.mercado=DB.mercado||seedMercado();
+  DB.mercado.stores=DB.mercado.stores||[];
+  DB.mercado.categories=(DB.mercado.categories&&DB.mercado.categories.length)?DB.mercado.categories:seedMercCats();
+  DB.mercado.products=DB.mercado.products||[];
+  DB.mercado.purchases=DB.mercado.purchases||[];
+  DB.mercado.items=DB.mercado.items||[];
   if(DB.version!==SCHEMA){DB.version=SCHEMA;}
   save();
 }
@@ -698,7 +773,7 @@ function initUI(){
   initDragOnce();
   renderAll();
 }
-const TITLES={home:'Início',tx:'Lançamentos',charts:'Análise',budget:'Orçamento',cats:'Categorias',config:'Ajustes'};
+const TITLES={home:'Início',tx:'Lançamentos',mercado:'Mercado',charts:'Análise',budget:'Orçamento',cats:'Categorias',config:'Ajustes'};
 function go(scr){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('scr-'+scr).classList.add('active');
@@ -706,6 +781,7 @@ function go(scr){
   document.getElementById('pageTitle').textContent=TITLES[scr]||'';
   window.scrollTo({top:0});
   if(scr==='home')renderHome();
+  if(scr==='mercado'&&window.mercShow)mercShow();
   if(scr==='charts')renderCharts();
   if(scr==='budget')renderBudget();
   if(scr==='cats')renderCats();
@@ -1201,10 +1277,330 @@ const PALETTE=['#16615E','#1B8A5A','#D8982F','#D5503A','#C9472E','#8A6A4F','#3FB
 function palette(target){return PALETTE.map(c=>`<button class="chip" style="background:${c};width:32px;height:32px;padding:0;border-radius:9px" onclick="${target}.color='${c}';markChip(this)"></button>`).join('');}
 let toastTimer=null;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);}
 function showSheet(h){document.getElementById('sheet').innerHTML=h;document.getElementById('overlay').classList.add('show');}
-function closeSheet(){document.getElementById('overlay').classList.remove('show');}
+function closeSheet(){document.getElementById('overlay').classList.remove('show');if(window.mercStopScan)window.mercStopScan();}
 
 let lastDesk=isDesktop();
 window.addEventListener('resize',()=>{const d=isDesktop();if(d!==lastDesk){lastDesk=d;if(DB){renderHome();renderTx();if(document.getElementById('scr-cats').classList.contains('active'))renderCats();}}});
+
+/* ========================= MÓDULO MERCADO ========================= */
+let mercTab='compras', mercProdSearch='', mercCatPeriod='all', mercDraft=null, mercItemDraft=null, mercStoreDraft=null, mercProdChart=null, mercStoreReturn=false;
+window.html5QrScanner=null;
+function M(){return DB.mercado;}
+const mStore=id=>M().stores.find(s=>s.id===id);
+const mCat=id=>M().categories.find(c=>c.id===id)||{name:'Outros',emoji:'📦',color:'#62736F'};
+const mProd=id=>M().products.find(p=>p.id===id);
+const mCatsSorted=()=>[...M().categories].sort((a,b)=>(a.order??0)-(b.order??0));
+const canonLabel=t=>t==='peso'?'kg':t==='volume'?'L':'un';
+function unitsFor(t){return t==='peso'?[['g','g'],['kg','kg']]:t==='volume'?[['ml','ml'],['L','L']]:[['un','unidade']];}
+function toCanonQty(t,unit,qty){if(t==='peso')return unit==='g'?qty/1000:qty;if(t==='volume')return unit==='ml'?qty/1000:qty;return qty;}
+function storeLogoHTML(s,cls){if(!s)return `<div class="store-logo ${cls||''}">🏪</div>`;
+  if(s.logoUrl)return `<div class="store-logo ${cls||''}"><img src="${esc(s.logoUrl)}" alt="" onerror="this.parentNode.innerHTML='${s.emoji||'🏪'}'"></div>`;
+  return `<div class="store-logo ${cls||''}" style="background:${(s.color||'#16615E')}22;color:${s.color||'#16615E'}">${s.emoji||'🏪'}</div>`;}
+function fmtDateTime(dt){if(!dt)return '';const[d,t]=dt.split('T');const[y,m,da]=d.split('-');return `${da}/${m}/${y}${t?' · '+t.slice(0,5):''}`;}
+function moneyUnit(cents,t){return money(cents)+'/'+canonLabel(t);}
+
+/* ---- price history / stats ---- */
+function prodHistory(pid){return M().items.filter(it=>it.productId===pid).map(it=>{const pu=M().purchases.find(p=>p.id===it.purchaseId);
+  return {date:pu?pu.datetime:'',storeId:pu?pu.storeId:null,qty:it.qty,unit:it.unit,totalCents:it.totalCents,unitPrice:it.unitPriceCanonCents};})
+  .sort((a,b)=>(a.date||'').localeCompare(b.date||''));}
+function prodStats(pid){const h=prodHistory(pid);if(!h.length)return null;const prices=h.map(x=>x.unitPrice);
+  const avg=Math.round(prices.reduce((s,v)=>s+v,0)/prices.length),min=Math.min(...prices),max=Math.max(...prices);
+  const minRow=h.find(x=>x.unitPrice===min),maxRow=h.find(x=>x.unitPrice===max);
+  const last=h[h.length-1].unitPrice,prev=h.length>1?h[h.length-2].unitPrice:null;
+  const byStore={};h.forEach(x=>{(byStore[x.storeId]=byStore[x.storeId]||[]).push(x.unitPrice);});
+  let cheapest=null;Object.entries(byStore).forEach(([sid,arr])=>{const a=arr.reduce((s,v)=>s+v,0)/arr.length;if(!cheapest||a<cheapest.avg)cheapest={storeId:sid,avg:a};});
+  const t=mProd(pid)?.unitType||'unidade';
+  return {h,avg,min,max,minRow,maxRow,last,prev,cheapest,count:h.length,unitType:t};}
+function storeSpend(sid){return M().purchases.filter(p=>p.storeId===sid).reduce((s,p)=>s+p.totalCents,0);}
+function storePurchaseCount(sid){return M().purchases.filter(p=>p.storeId===sid).length;}
+function catSpend(cid,period){let items=M().items.filter(it=>it.categoryId===cid);
+  if(period==='month'){const ym=curMonth;items=items.filter(it=>{const pu=M().purchases.find(p=>p.id===it.purchaseId);return pu&&(pu.datetime||'').slice(0,7)===ym;});}
+  return items.reduce((s,it)=>s+it.totalCents,0);}
+
+/* ---- screen + tabs ---- */
+function mercShow(){mercSetTab(mercTab);}
+function mercSetTab(t){mercTab=t;['compras','produtos','categorias','mercados'].forEach(x=>{
+  document.getElementById('merc-'+x).classList.toggle('hidden',x!==t);
+  document.getElementById('mtab-'+x).classList.toggle('on',x===t);});
+  if(t==='compras')mercRenderCompras();
+  if(t==='produtos')mercRenderProdutos();
+  if(t==='categorias')mercRenderCategorias();
+  if(t==='mercados')mercRenderMercados();}
+
+/* ---- COMPRAS ---- */
+function mercRenderCompras(){const box=document.getElementById('merc-compras');
+  const ps=[...M().purchases].sort((a,b)=>(b.datetime||'').localeCompare(a.datetime||'')||b.createdAt-a.createdAt);
+  if(!ps.length){box.innerHTML=emptyHTML('🧾','Nenhuma compra ainda','Toque em “Nova compra” para lançar pela nota, ou escaneie o QR code da nota fiscal.');return;}
+  const totalMonth=ps.filter(p=>(p.datetime||'').slice(0,7)===curMonth).reduce((s,p)=>s+p.totalCents,0);
+  let html=`<div class="kpi-grid" style="margin-bottom:14px"><div class="kpi"><div class="k-lab">Gasto no mês</div><div class="k-val num">${money(totalMonth)}</div></div>
+    <div class="kpi"><div class="k-lab">Compras (total)</div><div class="k-val num">${ps.length}</div></div></div>`;
+  html+='<div class="merc-grid">'+ps.map(p=>{const s=mStore(p.storeId);const n=M().items.filter(it=>it.purchaseId===p.id).length;
+    return `<button class="item-line" style="width:100%;text-align:left;padding:12px" onclick="mercCompraDetail('${p.id}')">
+      ${storeLogoHTML(s)}<div class="il-mid"><div style="font-weight:600">${esc(s?s.name:'Mercado')}</div>
+      <div style="font-size:12px;color:var(--muted)">${fmtDateTime(p.datetime)} · ${n} ${n===1?'item':'itens'}</div></div>
+      <div class="num" style="font-weight:600">${money(p.totalCents)}</div></button>`;}).join('')+'</div>';
+  box.innerHTML=html;}
+function mercCompraDetail(id){const p=M().purchases.find(x=>x.id===id);if(!p)return;const s=mStore(p.storeId);
+  const items=M().items.filter(it=>it.purchaseId===id);
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Compra</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">${storeLogoHTML(s,'lg')}
+      <div><div style="font-weight:600;font-size:16px">${esc(s?s.name:'Mercado')}</div>
+      <div style="font-size:12.5px;color:var(--muted)">${fmtDateTime(p.datetime)}</div></div>
+      <div style="margin-left:auto;text-align:right"><div class="num" style="font-family:var(--display);font-weight:600;font-size:20px">${money(p.totalCents)}</div>
+      <div style="font-size:11px;color:var(--muted)">${items.length} itens</div></div></div>
+    ${p.chave?`<div style="font-size:10.5px;color:var(--muted-2);word-break:break-all;margin-bottom:12px">Chave: ${esc(p.chave)}</div>`:''}
+    <div class="row-list">${items.map(it=>{const pr=mProd(it.productId);const c=mCat(it.categoryId);
+      return `<div class="row" style="cursor:default"><div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
+      <div class="row-mid"><div class="row-title">${esc(pr?pr.name:'Item')}</div>
+      <div class="row-sub">${(it.qty+'').replace('.',',')} ${it.unit} · ${moneyUnit(it.unitPriceCanonCents,pr?pr.unitType:'unidade')}</div></div>
+      <div class="num" style="font-weight:600">${money(it.totalCents)}</div></div>`;}).join('')}</div>
+    ${p.txId?`<p style="font-size:12px;color:var(--muted);margin:12px 2px 0">Lançado também nas finanças.</p>`:''}
+    <button class="btn btn-danger" style="margin-top:14px" onclick="mercDeletePurchase('${id}')">Excluir compra</button>`);}
+function mercDeletePurchase(id){const p=M().purchases.find(x=>x.id===id);if(!p)return;
+  if(!confirm('Excluir esta compra e seus itens?'))return;
+  M().items=M().items.filter(it=>it.purchaseId!==id);
+  M().purchases=M().purchases.filter(x=>x.id!==id);
+  if(p.txId){if(confirm('Remover também o lançamento nas finanças?'))DB.transactions=DB.transactions.filter(t=>t.id!==p.txId);}
+  save();closeSheet();mercSetTab('compras');renderAll();toast('Compra excluída');}
+
+/* ---- PRODUTOS ---- */
+function mercRenderProdutos(){const box=document.getElementById('merc-produtos');
+  const prods=M().products.slice();
+  let html=`<input class="input" placeholder="🔎 Buscar produto (ex: café, leite...)" value="${esc(mercProdSearch)}" oninput="mercProdSearch=this.value;mercRenderProdutos();this.focus?null:null" style="margin-bottom:6px">
+    <p style="font-size:11.5px;color:var(--muted);margin:0 2px 12px">Toque num produto para ver o histórico de preços e a média — útil pra conferir no mercado.</p>`;
+  let list=prods;
+  if(mercProdSearch.trim()){const q=mercProdSearch.toLowerCase();list=prods.filter(p=>p.name.toLowerCase().includes(q)||mCat(p.categoryId).name.toLowerCase().includes(q));}
+  list.sort((a,b)=>a.name.localeCompare(b.name));
+  if(!list.length){box.innerHTML=html+emptyHTML('📦',prods.length?'Nada encontrado':'Sem produtos ainda',prods.length?'Tente outro termo.':'Os produtos aparecem aqui quando você lança uma compra.');
+    const inp=box.querySelector('input');if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}return;}
+  html+='<div class="merc-grid">'+list.map(p=>{const st=prodStats(p.id);const c=mCat(p.categoryId);
+    let trend='';if(st&&st.prev!=null){const d=st.last-st.prev;trend=d>0?`<span class="trend-up">▲</span>`:d<0?`<span class="trend-down">▼</span>`:`<span class="trend-flat">—</span>`;}
+    return `<button class="item-line prod-row" style="width:100%;text-align:left;padding:12px" onclick="mercProdDetail('${p.id}')">
+      <div class="row-ico" style="background:${c.color}22;color:${c.color}">${p.emoji||c.emoji}</div>
+      <div class="il-mid"><div style="font-weight:600">${esc(p.name)}</div>
+      <div style="font-size:11.5px;color:var(--muted)">${c.name}${st?' · '+st.count+'x':''}</div></div>
+      <div class="pp">${st?money(st.avg):'—'}<span class="canon-tag">/${canonLabel(p.unitType)} ${trend}</span></div></button>`;}).join('')+'</div>';
+  box.innerHTML=html;const inp=box.querySelector('input');if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}}
+function mercProdDetail(id){const p=mProd(id);if(!p)return;const st=prodStats(id);const c=mCat(p.categoryId);
+  let body=`<div class="sheet-grip"></div><div class="sheet-h"><h2>${esc(p.name)}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div class="row-ico" style="background:${c.color}22;color:${c.color}">${p.emoji||c.emoji}</div>
+      <div><div style="font-size:12.5px;color:var(--muted)">${c.name} · medido em ${canonLabel(p.unitType)}</div></div>
+      <button class="iconbtn" style="margin-left:auto" onclick="mercEditProduct('${id}')">✎</button></div>`;
+  if(!st){body+=emptyHTML('🛒','Sem histórico','Esse produto ainda não tem compras registradas.');showSheet(body);return;}
+  const cs=mStore(st.cheapest.storeId);
+  body+=`<div style="margin:6px 0 2px"><div style="font-size:11px;color:var(--muted);font-weight:600">PREÇO MÉDIO</div>
+    <div class="big-stat">${money(st.avg)}<span style="font-size:16px;color:var(--muted)">/${canonLabel(st.unitType)}</span></div></div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="sl">Menor preço</div><div class="sv" style="color:var(--entrada)">${money(st.min)}/${canonLabel(st.unitType)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(mStore(st.minRow.storeId)?.name||'—')} · ${fmtDateTime(st.minRow.date).split(' · ')[0]}</div></div>
+      <div class="stat-box"><div class="sl">Maior preço</div><div class="sv" style="color:var(--saida)">${money(st.max)}/${canonLabel(st.unitType)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(mStore(st.maxRow.storeId)?.name||'—')} · ${fmtDateTime(st.maxRow.date).split(' · ')[0]}</div></div></div>
+    <div class="stat-box" style="margin-bottom:12px"><div class="sl">Mais barato em média</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${storeLogoHTML(cs)}<div><div style="font-weight:600">${esc(cs?cs.name:'—')}</div>
+      <div style="font-size:11.5px;color:var(--entrada);font-weight:600" class="num">${money(Math.round(st.cheapest.avg))}/${canonLabel(st.unitType)}</div></div></div></div>
+    <div class="card" style="padding:10px 6px;margin-bottom:14px"><div class="chart-box" style="height:200px"><canvas id="prodChartCanvas"></canvas></div></div>
+    <div class="dgroup-h">Histórico</div><div class="row-list">${[...st.h].reverse().map(x=>{const s=mStore(x.storeId);
+      const tag=x.unitPrice===st.min?'<span class="mini-pill pill-min">menor</span>':x.unitPrice===st.max?'<span class="mini-pill pill-max">maior</span>':'';
+      return `<div class="row" style="cursor:default">${storeLogoHTML(s)}<div class="row-mid">
+        <div class="row-title">${esc(s?s.name:'—')} ${tag}</div>
+        <div class="row-sub">${fmtDateTime(x.date).split(' · ')[0]} · ${(x.qty+'').replace('.',',')} ${x.unit} · ${money(x.totalCents)}</div></div>
+        <div class="num" style="font-weight:600">${money(x.unitPrice)}<span style="font-size:11px;color:var(--muted)">/${canonLabel(st.unitType)}</span></div></div>`;}).join('')}</div>`;
+  showSheet(body);
+  // chart
+  setTimeout(()=>{const cv=document.getElementById('prodChartCanvas');if(!cv)return;if(mercProdChart)mercProdChart.destroy();
+    mercProdChart=new Chart(cv,{type:'line',data:{labels:st.h.map(x=>fmtDateTime(x.date).split(' · ')[0]),
+      datasets:[{data:st.h.map(x=>x.unitPrice/100),borderColor:c.color,backgroundColor:c.color+'22',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:c.color}]},
+      options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>' '+BRL.format(cx.parsed.y)+'/'+canonLabel(st.unitType)}}},
+        scales:{x:{grid:{display:false},ticks:{font:{size:10},maxRotation:0}},y:{grid:{color:'#E0E6E4'},ticks:{font:{size:10},callback:v=>'R$'+v}}}}});},60);}
+function mercEditProduct(id){const p=mProd(id);if(!p)return;mercProdEdit={...p};
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Editar produto</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Nome</label><input class="input" value="${esc(p.name)}" oninput="mercProdEdit.name=this.value"></div>
+    <div class="field"><label>Categoria</label><select class="input" onchange="mercProdEdit.categoryId=this.value">
+      ${mCatsSorted().map(c=>`<option value="${c.id}" ${p.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
+    <div class="field"><label>Unidade de medida</label><select class="input" onchange="mercProdEdit.unitType=this.value">
+      <option value="peso" ${p.unitType==='peso'?'selected':''}>Peso (kg)</option>
+      <option value="volume" ${p.unitType==='volume'?'selected':''}>Volume (L)</option>
+      <option value="unidade" ${p.unitType==='unidade'?'selected':''}>Unidade (un)</option></select></div>
+    <button class="btn btn-primary" onclick="mercSaveProduct()">Salvar</button>`);}
+var mercProdEdit=null;
+function mercSaveProduct(){const i=M().products.findIndex(x=>x.id===mercProdEdit.id);if(i<0)return;
+  M().products[i]={...M().products[i],name:mercProdEdit.name.trim()||M().products[i].name,categoryId:mercProdEdit.categoryId,unitType:mercProdEdit.unitType};
+  // resync item category snapshots
+  M().items.filter(it=>it.productId===mercProdEdit.id).forEach(it=>{it.categoryId=mercProdEdit.categoryId;
+    const cq=toCanonQty(mercProdEdit.unitType,it.unit,it.qty);it.canonQty=cq;it.unitPriceCanonCents=cq>0?Math.round(it.totalCents/cq):0;});
+  save();closeSheet();mercSetTab('produtos');toast('Produto atualizado ✓');}
+
+/* ---- CATEGORIAS ---- */
+function mercRenderCategorias(){const box=document.getElementById('merc-categorias');
+  let html=`<div class="seg-sm" style="margin-bottom:14px"><button class="${mercCatPeriod==='month'?'on':''}" onclick="mercCatPeriod='month';mercRenderCategorias()">Mês atual</button>
+    <button class="${mercCatPeriod==='all'?'on':''}" onclick="mercCatPeriod='all';mercRenderCategorias()">Tudo</button></div>`;
+  const cats=mCatsSorted().map(c=>({c,total:catSpend(c.id,mercCatPeriod)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+  const grand=cats.reduce((s,x)=>s+x.total,0);
+  if(!cats.length){box.innerHTML=html+emptyHTML('🥬','Sem gastos no período','Lance compras para ver onde o dinheiro do mercado está indo.');return;}
+  html+=`<div class="card" style="padding:14px;margin-bottom:12px"><div style="font-size:12px;color:var(--muted);font-weight:600">Total ${mercCatPeriod==='month'?'do mês':'geral'}</div>
+    <div class="num" style="font-family:var(--display);font-weight:600;font-size:24px">${money(grand)}</div></div>`;
+  html+='<div class="merc-grid">'+cats.map(({c,total})=>{const pct=grand?Math.round(total/grand*100):0;
+    return `<button class="card" style="padding:14px;text-align:left;width:100%" onclick="mercCatDetail('${c.id}')">
+      <div style="display:flex;align-items:center;gap:10px"><div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
+      <div style="flex:1"><div style="font-weight:600">${c.name}</div><div style="font-size:11.5px;color:var(--muted)">${pct}% do total</div></div>
+      <div class="num" style="font-weight:600">${money(total)}</div></div>
+      <div class="bar" style="margin-top:10px"><span style="width:${pct}%;background:${c.color}"></span></div></button>`;}).join('')+'</div>';
+  box.innerHTML=html;}
+function mercCatDetail(cid){const c=mCat(cid);
+  let items=M().items.filter(it=>it.categoryId===cid);
+  if(mercCatPeriod==='month')items=items.filter(it=>{const pu=M().purchases.find(p=>p.id===it.purchaseId);return pu&&(pu.datetime||'').slice(0,7)===curMonth;});
+  const byProd={};items.forEach(it=>{(byProd[it.productId]=byProd[it.productId]||{total:0,n:0});byProd[it.productId].total+=it.totalCents;byProd[it.productId].n++;});
+  const rows=Object.entries(byProd).map(([pid,v])=>({pid,...v})).sort((a,b)=>b.total-a.total);
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${c.emoji} ${c.name}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="row-list">${rows.map(r=>{const p=mProd(r.pid);return `<button class="row" onclick="closeSheet();setTimeout(()=>mercProdDetail('${r.pid}'),50)">
+      <div class="row-ico" style="background:${c.color}22;color:${c.color}">${p?.emoji||c.emoji}</div>
+      <div class="row-mid"><div class="row-title">${esc(p?p.name:'—')}</div><div class="row-sub">${r.n}x comprado</div></div>
+      <div class="num" style="font-weight:600">${money(r.total)}</div></button>`;}).join('')}</div>`);}
+
+/* ---- MERCADOS ---- */
+function mercRenderMercados(){const box=document.getElementById('merc-mercados');
+  let html=`<button class="btn btn-ghost btn-sm" onclick="mercEditStore()" style="margin-bottom:14px">+ Novo mercado</button>`;
+  const stores=[...M().stores].sort((a,b)=>storeSpend(b.id)-storeSpend(a.id));
+  if(!stores.length){box.innerHTML=html+emptyHTML('🏪','Nenhum mercado','Cadastre os mercados onde você compra (com logo, se quiser).');return;}
+  html+='<div class="merc-grid">'+stores.map(s=>`<button class="card" style="padding:14px;text-align:left;width:100%;display:flex;align-items:center;gap:12px" onclick="mercEditStore('${s.id}')">
+    ${storeLogoHTML(s,'lg')}<div style="flex:1"><div style="font-weight:600">${esc(s.name)}</div>
+    <div style="font-size:11.5px;color:var(--muted)">${storePurchaseCount(s.id)} compras${s.cnpj?' · CNPJ '+esc(s.cnpj.slice(0,8))+'…':''}</div></div>
+    <div class="num" style="font-weight:600">${money(storeSpend(s.id))}</div></button>`).join('')+'</div>';
+  box.innerHTML=html;}
+function mercEditStore(id,prefillCnpj,fromPurchase){const s=id?mStore(id):null;
+  mercStoreReturn=!!fromPurchase&&!!mercDraft;
+  mercStoreDraft=s?{...s}:{name:'',cnpj:prefillCnpj||'',emoji:'🛒',logoUrl:'',color:'#16615E',address:''};
+  const editing=!!s;
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${editing?'Editar mercado':'Novo mercado'}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Nome</label><input class="input" value="${esc(mercStoreDraft.name)}" placeholder="ex: Prezunic, Amoedo" oninput="mercStoreDraft.name=this.value"></div>
+    <div class="field"><label>CNPJ (opcional)</label><input class="input num" inputmode="numeric" value="${esc(mercStoreDraft.cnpj)}" placeholder="só números" oninput="mercStoreDraft.cnpj=this.value.replace(/\\D/g,'')"></div>
+    <div class="field"><label>Logo (link de imagem, opcional)</label><input class="input" value="${esc(mercStoreDraft.logoUrl)}" placeholder="https://...png" oninput="mercStoreDraft.logoUrl=this.value"></div>
+    <div class="field"><label>Ícone (se não usar logo)</label><div class="chips">${['🛒','🏪','🥬','🍎','🧺','🏬','🛍️','💚'].map(e=>`<button class="chip ${mercStoreDraft.emoji===e?'on':''}" onclick="mercStoreDraft.emoji='${e}';markChip(this)"><span class="ce">${e}</span></button>`).join('')}</div></div>
+    <div class="field"><label>Cor</label><div class="chips">${palette('mercStoreDraft')}</div></div>
+    <div class="field"><label>Endereço (opcional)</label><input class="input" value="${esc(mercStoreDraft.address)}" placeholder="bairro, cidade" oninput="mercStoreDraft.address=this.value"></div>
+    <button class="btn btn-primary" onclick="mercSaveStore()">${editing?'Salvar':'Cadastrar'}</button>
+    ${editing?`<button class="btn btn-danger" style="margin-top:10px" onclick="mercDeleteStore('${s.id}')">Excluir mercado</button>`:''}`);}
+function mercSaveStore(){if(!mercStoreDraft.name.trim())return toast('Dê um nome ao mercado');
+  let savedId=mercStoreDraft.id;
+  if(savedId){const i=M().stores.findIndex(x=>x.id===savedId);M().stores[i]={...M().stores[i],...mercStoreDraft};}
+  else{savedId=uid();M().stores.push({...mercStoreDraft,id:savedId});}
+  save();
+  if(mercStoreReturn&&mercDraft){mercStoreReturn=false;mercDraft.storeId=savedId;closeSheet();mercRenderPurchaseSheet();toast('Mercado criado ✓');return;}
+  closeSheet();mercSetTab('mercados');toast('Mercado salvo ✓');}
+function mercDeleteStore(id){const n=storePurchaseCount(id);
+  if(n)return toast(`Esse mercado tem ${n} compra(s). Não dá pra excluir.`);
+  if(!confirm('Excluir mercado?'))return;M().stores=M().stores.filter(s=>s.id!==id);save();closeSheet();mercSetTab('mercados');toast('Mercado excluído');}
+
+/* ---- NOVA COMPRA ---- */
+function mercNewPurchase(prefill){prefill=prefill||{};mercStoreReturn=false;
+  const now=new Date();const dtLocal=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  mercDraft={storeId:prefill.storeId||M().stores[0]?.id||null,datetime:prefill.datetime||dtLocal,formaId:DB.formas[0]?.id,
+    items:prefill.items||[],linkFinance:true,chave:prefill.chave||'',source:prefill.source||'manual',cnpj:prefill.cnpj||''};
+  mercItemDraft=mercBlankItem();
+  mercRenderPurchaseSheet();
+  if(prefill.cnpj&&!prefill.storeId)setTimeout(()=>toast('CNPJ '+prefill.cnpj.slice(0,8)+'… não cadastrado. Crie o mercado e selecione.'),300);}
+function mercBlankItem(){return {name:'',categoryId:M().categories[0].id,unitType:'unidade',qty:'',unit:'un',totalCents:0};}
+function mercRenderPurchaseSheet(){const d=mercDraft;const total=d.items.reduce((s,it)=>s+it.totalCents,0);
+  const it=mercItemDraft;const units=unitsFor(it.unitType);
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Nova compra</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="frow">
+      <div class="field"><label>Mercado</label><select class="input" onchange="if(this.value==='__new'){mercEditStore(null,mercDraft.cnpj,true)}else{mercDraft.storeId=this.value}">
+        ${M().stores.map(s=>`<option value="${s.id}" ${d.storeId===s.id?'selected':''}>${s.emoji||'🏪'} ${s.name}</option>`).join('')}
+        <option value="__new">+ Novo mercado…</option></select></div>
+      <div class="field"><label>Forma</label><select class="input" onchange="mercDraft.formaId=this.value">
+        ${DB.formas.map(f=>`<option value="${f.id}" ${d.formaId===f.id?'selected':''}>${f.emoji} ${f.name}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>Data e hora</label><input class="input" type="datetime-local" value="${d.datetime}" onchange="mercDraft.datetime=this.value"></div>
+
+    <div class="dgroup-h" style="margin-top:6px">Itens ${d.items.length?'('+d.items.length+')':''}</div>
+    ${d.items.length?d.items.map((x,i)=>{const c=mCat(x.categoryId);const cq=toCanonQty(x.unitType,x.unit,parseFloat((''+x.qty).replace(',','.'))||0);const up=cq>0?Math.round(x.totalCents/cq):0;
+      return `<div class="item-line"><div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
+        <div class="il-mid"><div style="font-weight:600;font-size:13.5px">${esc(x.name)}</div>
+        <div style="font-size:11.5px;color:var(--muted)">${(''+x.qty).replace('.',',')} ${x.unit} · ${money(up)}/${canonLabel(x.unitType)}</div></div>
+        <div class="num" style="font-weight:600;font-size:13.5px">${money(x.totalCents)}</div>
+        <button class="iconbtn" onclick="mercEditDraftItem(${i})">✎</button>
+        <button class="iconbtn" onclick="mercRemoveDraftItem(${i})">✕</button></div>`;}).join(''):'<p style="font-size:13px;color:var(--muted);margin:0 2px 10px">Nenhum item ainda. Adicione abaixo.</p>'}
+
+    <div class="item-add">
+      <div class="field" style="margin-bottom:8px"><label>Produto</label><input class="input" list="mercProdList" value="${esc(it.name)}" placeholder="ex: Café Pilão 500g" oninput="mercItemDraft.name=this.value" onchange="mercItemResolveProduct(this.value)"></div>
+      <div class="grid3">
+        <select class="input" onchange="mercItemDraft.categoryId=this.value">${mCatsSorted().map(c=>`<option value="${c.id}" ${it.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select>
+        <select class="input" onchange="mercItemDraft.unitType=this.value;mercItemDraft.unit=unitsFor(this.value)[0][0];mercRenderPurchaseSheet()">
+          <option value="unidade" ${it.unitType==='unidade'?'selected':''}>Unidade</option>
+          <option value="peso" ${it.unitType==='peso'?'selected':''}>Peso</option>
+          <option value="volume" ${it.unitType==='volume'?'selected':''}>Volume</option></select>
+        <select class="input" onchange="mercItemDraft.unit=this.value">${units.map(([u,l])=>`<option value="${u}" ${it.unit===u?'selected':''}>${l}</option>`).join('')}</select>
+      </div>
+      <div class="grid2">
+        <input class="input num" inputmode="decimal" value="${it.qty}" placeholder="Quantidade (ex: 0,5)" oninput="mercItemDraft.qty=this.value">
+        <div style="position:relative"><span style="position:absolute;left:12px;top:13px;color:var(--muted);font-weight:600">R$</span>
+          <input class="input num" inputmode="numeric" style="padding-left:38px" value="${it.totalCents?plain(it.totalCents):''}" placeholder="Total pago" oninput="mercItemDraft.totalCents=digitsToCents(this.value);this.value=mercItemDraft.totalCents?plain(mercItemDraft.totalCents):''"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="mercAddDraftItem()">+ Adicionar item</button>
+    </div>
+
+    <div class="card" style="padding:14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-weight:600;color:var(--muted)">Total da compra</span><span class="num" style="font-family:var(--display);font-weight:600;font-size:20px">${money(total)}</span></div>
+    <label style="display:flex;align-items:center;gap:10px;font-size:13.5px;margin-bottom:14px;cursor:pointer">
+      <input type="checkbox" ${d.linkFinance?'checked':''} onchange="mercDraft.linkFinance=this.checked" style="width:18px;height:18px"> Lançar também nas finanças (saída em MERCADO)</label>
+    <button class="btn btn-primary" onclick="mercSavePurchase()">Salvar compra</button>`);
+  mercBuildProdList();}
+function mercBuildProdList(){let dl=document.getElementById('mercProdList');if(!dl){dl=document.createElement('datalist');dl.id='mercProdList';document.body.appendChild(dl);}
+  dl.innerHTML=M().products.map(p=>`<option value="${esc(p.name)}">`).join('');}
+function mercItemResolveProduct(name){const p=M().products.find(x=>x.name.toLowerCase()===(name||'').trim().toLowerCase());
+  if(p){mercItemDraft.categoryId=p.categoryId;mercItemDraft.unitType=p.unitType;if(!unitsFor(p.unitType).some(u=>u[0]===mercItemDraft.unit))mercItemDraft.unit=unitsFor(p.unitType)[0][0];mercRenderPurchaseSheet();}}
+function mercAddDraftItem(){const it=mercItemDraft;
+  if(!it.name.trim())return toast('Informe o produto');
+  const qty=parseFloat((''+it.qty).replace(',','.'));if(!qty||qty<=0)return toast('Informe a quantidade');
+  if(!it.totalCents||it.totalCents<=0)return toast('Informe o total pago');
+  mercDraft.items.push({name:it.name.trim(),categoryId:it.categoryId,unitType:it.unitType,qty:qty,unit:it.unit,totalCents:it.totalCents});
+  mercItemDraft=mercBlankItem();mercRenderPurchaseSheet();}
+function mercEditDraftItem(i){const x=mercDraft.items[i];mercItemDraft={name:x.name,categoryId:x.categoryId,unitType:x.unitType,qty:x.qty,unit:x.unit,totalCents:x.totalCents};
+  mercDraft.items.splice(i,1);mercRenderPurchaseSheet();}
+function mercRemoveDraftItem(i){mercDraft.items.splice(i,1);mercRenderPurchaseSheet();}
+function mercSavePurchase(){const d=mercDraft;
+  if(!d.storeId)return toast('Escolha o mercado');
+  if(!d.items.length)return toast('Adicione ao menos um item');
+  const total=d.items.reduce((s,it)=>s+it.totalCents,0);const pid=uid();
+  d.items.forEach(it=>{let prod=M().products.find(p=>p.name.toLowerCase()===it.name.trim().toLowerCase());
+    if(!prod){prod={id:uid(),name:it.name.trim(),categoryId:it.categoryId,unitType:it.unitType,emoji:mCat(it.categoryId).emoji};M().products.push(prod);}
+    const cq=toCanonQty(prod.unitType,it.unit,it.qty);const up=cq>0?Math.round(it.totalCents/cq):0;
+    M().items.push({id:uid(),purchaseId:pid,productId:prod.id,categoryId:prod.categoryId,qty:it.qty,unit:it.unit,canonQty:cq,totalCents:it.totalCents,unitPriceCanonCents:up,createdAt:Date.now()});});
+  let txId=null;
+  if(d.linkFinance){const catM=DB.categories.find(c=>c.id===slug('MERCADO'))||DB.categories.find(c=>c.kind==='saida');
+    txId=uid();DB.transactions.push({id:txId,type:'saida',amountCents:total,date:(d.datetime||'').slice(0,10)||new Date().toISOString().slice(0,10),
+      regime:'caixa',parcelado:false,parcela:1,totalParcelas:1,parcelaGroup:null,formaId:d.formaId||DB.formas[0]?.id,cartao:'',
+      categoryId:catM?catM.id:null,description:mStore(d.storeId)?.name||'Mercado',note:'Compra de mercado · '+d.items.length+' itens',createdAt:Date.now()});}
+  M().purchases.push({id:pid,storeId:d.storeId,datetime:d.datetime,totalCents:total,formaId:d.formaId,chave:d.chave||'',source:d.source||'manual',txId,createdAt:Date.now()});
+  save();closeSheet();mercDraft=null;mercSetTab('compras');renderAll();toast('Compra registrada ✓'+(d.linkFinance?' (lançada nas finanças)':''));}
+
+/* ---- SCAN QR NFC-e ---- */
+function extractChave(text){if(!text)return null;let m=text.match(/[?&]p=([^&]+)/i);
+  if(m){const first=decodeURIComponent(m[1]).split('|')[0].replace(/\D/g,'');if(first.length===44)return first;}
+  m=text.match(/chNFe=(\d{44})/i);if(m)return m[1];
+  const only=text.replace(/\D/g,'');if(only.length===44)return only;
+  m=text.match(/(\d{44})/);if(m)return m[1];return null;}
+function mercOpenScan(){
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Escanear nota</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div id="qrReader"></div>
+    <p class="scan-hint">Aponte para o <b>QR code</b> da nota fiscal (NFC-e). Vou identificar o mercado pelo CNPJ e a data; os itens você confere e adiciona.</p>
+    <button class="btn btn-ghost" onclick="closeSheet()">Cancelar</button>`);
+  if(typeof Html5Qrcode==='undefined'){toast('Leitor não carregou. Tente novamente.');return;}
+  setTimeout(()=>{try{window.html5QrScanner=new Html5Qrcode('qrReader');
+    const cfg={fps:10,qrbox:{width:240,height:240}};
+    Html5Qrcode.getCameras().then(cams=>{let camId=null;if(cams&&cams.length){const back=cams.find(c=>/back|rear|traseira|environment/i.test(c.label));camId=(back||cams[cams.length-1]).id;}
+      window.html5QrScanner.start(camId||{facingMode:'environment'},cfg,onScanOk,()=>{}).catch(()=>{
+        window.html5QrScanner.start({facingMode:'environment'},cfg,onScanOk,()=>{}).catch(()=>toast('Não foi possível abrir a câmera'));});})
+    .catch(()=>{window.html5QrScanner.start({facingMode:'environment'},cfg,onScanOk,()=>{}).catch(()=>toast('Sem acesso à câmera. Verifique as permissões.'));});
+  }catch(e){toast('Erro ao iniciar a câmera');}},250);}
+function onScanOk(text){mercStopScan();const chave=extractChave(text);
+  document.getElementById('overlay').classList.remove('show');
+  if(!chave){toast('QR lido, mas não parece uma NFC-e');return;}
+  const cnpj=chave.substr(6,14);const store=M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===cnpj);
+  mercNewPurchase({chave,source:'qrcode',storeId:store?store.id:null,cnpj});
+  toast(store?'Mercado identificado pelo CNPJ ✓':'Nota lida — selecione ou cadastre o mercado');}
+window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScanner.stop().then(()=>{try{window.html5QrScanner.clear();}catch(e){}window.html5QrScanner=null;}).catch(()=>{window.html5QrScanner=null;});}catch(e){window.html5QrScanner=null;}}};
 
 /* ===== BOOT ===== */
 (async function(){
