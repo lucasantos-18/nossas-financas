@@ -279,11 +279,11 @@ td.out{color:var(--saida);font-weight:600}
 /* ===================== DESKTOP ===================== */
 @media(min-width:900px){
   .desk-only{display:block}
-  #app{display:grid;grid-template-columns:248px 1fr;max-width:1320px;margin:0 auto;min-height:100vh;padding-bottom:0;gap:0}
-  .sidebar{display:flex;flex-direction:column;padding:22px 16px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh}
-  .sidebar .brand{flex:none;margin-bottom:24px}
-  .sidebar .brand-mark{width:40px;height:40px;border-radius:12px}.sidebar .brand-mark span{font-size:15px}
-  .sidebar .brand-name{font-size:18px}
+  #app{display:grid;grid-template-columns:220px 1fr;max-width:100%;margin:0 auto;min-height:100vh;padding-bottom:0;gap:0}
+  .sidebar{display:flex;flex-direction:column;padding:22px 14px;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;width:220px}
+  .sidebar .brand{flex:none;margin-bottom:20px}
+  .sidebar .brand-mark{width:38px;height:38px;border-radius:11px}.sidebar .brand-mark span{font-size:14px}
+  .sidebar .brand-name{font-size:17px}
   .side-nav{display:flex;flex-direction:column;gap:4px}
   .side-btn{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:12px;color:var(--muted);font-weight:600;font-size:14px;text-align:left}
   .side-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9}
@@ -291,8 +291,8 @@ td.out{color:var(--saida);font-weight:600}
   .side-btn.on{background:var(--ink);color:#EAEEED}
   .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
   .side-new{background:var(--amber);color:#3a2a08;font-weight:700}
-  .main{padding:0 32px 40px}
-  .inner{max-width:1180px}
+  .main{padding:0 28px 40px}
+  .inner{max-width:100%}
   .topbar{background:var(--paper);padding:22px 0 14px}
   .topbar .brand{display:none}
   .page-title{display:block;flex:1;font-family:var(--display);font-weight:600;font-size:24px;letter-spacing:-.02em;text-transform:capitalize}
@@ -350,6 +350,14 @@ td.out{color:var(--saida);font-weight:600}
 .sync-badge{position:fixed;left:14px;bottom:86px;z-index:60;font-size:11.5px;font-weight:600;padding:7px 12px;border-radius:999px;box-shadow:var(--shadow);background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:7px}
 .sync-badge .sd{width:8px;height:8px;border-radius:50%}
 @media(min-width:900px){.sync-badge{left:auto;right:18px;bottom:18px}}
+.mod-switcher{position:relative;display:inline-block}
+.mod-drop{position:absolute;top:calc(100% + 6px);left:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);padding:6px;min-width:180px;z-index:100;display:none}
+.mod-drop.open{display:block}
+.mod-drop button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border-radius:10px;font-weight:600;font-size:14px;color:var(--ink);text-align:left}
+.mod-drop button:hover{background:var(--paper-2)}
+.mod-drop button.active-mod{background:var(--ink);color:#EAEEED}
+.mod-drop .mod-sep{height:1px;background:var(--line);margin:4px 0}
+.mod-tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--amber-bg);color:var(--amber);margin-left:auto}
 </style>
 </head>
 <body>
@@ -374,19 +382,35 @@ td.out{color:var(--saida);font-weight:600}
   <div id="syncBadge" class="sync-badge hidden"></div>
   <!-- sidebar (desktop) -->
   <aside class="sidebar">
-    <div class="brand"><div class="brand-mark"><span>NF</span></div>
-      <div><div class="brand-name">Nossas Finanças</div><div class="brand-sub" id="greetSide">Olá</div></div></div>
-    <nav class="side-nav">
+    <div class="mod-switcher" id="modSwitcher">
+      <button class="brand" onclick="toggleModDrop()" style="width:100%;text-align:left;border-radius:12px;padding:6px;cursor:pointer">
+        <div class="brand-mark"><span>NF</span></div>
+        <div><div class="brand-name">Nossas Finanças</div><div class="brand-sub" id="greetSide">Olá</div></div>
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2;margin-left:auto;flex:none"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="mod-drop" id="modDrop">
+        <button id="modBtnFinancas" class="active-mod" onclick="switchModule('financas')">💰 Finanças</button>
+        <button id="modBtnMercado" onclick="switchModule('mercado')">🛒 Mercado</button>
+      </div>
+    </div>
+    <!-- NAV FINANÇAS -->
+    <nav class="side-nav" id="navFinancas">
       <button class="side-btn on" data-scr="home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</button>
       <button class="side-btn" data-scr="tx" onclick="go('tx')"><svg viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3"/></svg>Lançamentos</button>
-      <button class="side-btn" data-scr="mercado" onclick="go('mercado')"><svg viewBox="0 0 24 24"><path d="M5 6h16l-2 9H7zM5 6 4 3H2m5 18a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm11 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>Mercado</button>
       <button class="side-btn" data-scr="charts" onclick="go('charts')"><svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>Análise</button>
       <button class="side-btn" data-scr="budget" onclick="go('budget')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Orçamento</button>
       <button class="side-btn" data-scr="cats" onclick="go('cats')"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Categorias</button>
       <button class="side-btn" data-scr="config" onclick="go('config')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.3l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.2-1.3L14 2h-4l-.4 2.5a7 7 0 0 0-2.2 1.3l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .9.1 1.3l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2.2 1.3L10 22h4l.4-2.5a7 7 0 0 0 2.2-1.3l2.3 1 2-3.4-2-1.5c.1-.4.1-.9.1-1.3z"/></svg>Ajustes</button>
     </nav>
+    <!-- NAV MERCADO -->
+    <nav class="side-nav hidden" id="navMercado">
+      <button class="side-btn on" onclick="mercSetTab('compras')"><svg viewBox="0 0 24 24"><path d="M9 14h6m-7-4h8M5 4h16l-2 9H7zM5 4 4 1H2m5 18a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm11 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>Compras</button>
+      <button class="side-btn" onclick="mercSetTab('produtos')"><svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 3H8L6 7h12z"/></svg>Produtos</button>
+      <button class="side-btn" onclick="mercSetTab('categorias')"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Categorias</button>
+      <button class="side-btn" onclick="mercSetTab('mercados')"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Mercados</button>
+    </nav>
     <div class="side-foot">
-      <button class="btn side-new" onclick="openTx()">+ Novo lançamento</button>
+      <button class="btn side-new" id="sideAction" onclick="openTx()">+ Novo lançamento</button>
       <div class="user-tag"><div class="user-av" id="sideAv">L</div>
         <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="sideName">—</div></div>
         <button class="chev" onclick="logout()" title="Sair">⎋</button></div>
@@ -567,6 +591,7 @@ const TABLES=[
   {name:'Transacoes',cols:['id','type','amountCents','date','regime','parcelado','parcela','totalParcelas','parcelaGroup','formaId','cartao','categoryId','description','note','createdAt'],
    num:['amountCents','parcela','totalParcelas','createdAt'],bool:['parcelado'],get:()=>DB.transactions,set:r=>DB.transactions=r},
   {name:'Formas',cols:['id','name','emoji','color'],get:()=>DB.formas,set:r=>DB.formas=r},
+  {name:'Cartoes',cols:['id','formaId','numero','apelido'],get:()=>DB.cartoes||[],set:r=>DB.cartoes=r},
   {name:'Categorias',cols:['id','name','emoji','color','kind','order'],num:['order'],get:()=>DB.categories,set:r=>DB.categories=r},
   {name:'Metas',cols:['id','name','emoji','color','targetCents','savedCents'],num:['targetCents','savedCents'],get:()=>DB.goals,set:r=>DB.goals=r},
   {name:'Orcamentos',cols:['month','categoryId','cents'],num:['cents'],
@@ -687,7 +712,7 @@ const SAIDAS=[['OFERTA','🙏'],['DOAÇÃO','❤️'],['FINANCIAMENTO','🏦'],[
  ['COMPRAS EXT','🌍'],['FAMÍLIA','👨‍👩‍👧'],['VIAGENS','✈️'],['OUTROS GASTOS','📦'],['DRAXOS','🩸'],
  ['PRO LABORE LUCAS','💼'],['PRO LABORE BRUNA','👩‍💼']];
 const ENTRADAS=[['SALÁRIO LUCAS','💰'],['SALÁRIO BRUNA','💵'],['OUTRAS RENDAS','🪙']];
-const SCOL=['#D5503A','#E0653F','#E8823C','#C9472E','#B8553B','#D86F5A','#A8503F','#BD5A44','#CC6B4E','#C2683F'];
+const SCOL=['#D5503A','#5B7DB1','#D8982F','#9B5BB1','#1B8A5A','#E8823C','#16615E','#C9472E','#3FB57E','#8A6A4F','#5AAEC9','#B5651D','#62736F','#E89AB5'];
 const ECOL=['#1B8A5A','#2E9E6F','#3FB57E'];
 function seedCategories(){
   let o=0; const cats=[];
@@ -702,7 +727,7 @@ function seedFormas(){return[
   {id:'forma_pix',name:'Pix',emoji:'⚡',color:'#1B8A5A'},
   {id:'forma_mumbuca',name:'Mumbuca',emoji:'🪙',color:'#D8982F'},
   {id:'forma_dinheiro',name:'Dinheiro',emoji:'💵',color:'#2E9E6F'}];}
-function seed(){return{version:SCHEMA,formas:seedFormas(),categories:seedCategories(),transactions:[],budgets:{},goals:[],settings:{},mercado:seedMercado()};}
+function seed(){return{version:SCHEMA,formas:seedFormas(),categories:seedCategories(),transactions:[],budgets:{},goals:[],settings:{},cartoes:[],mercado:seedMercado()};}
 function slug2(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function seedMercCats(){const L=[['Hortifruti','🥬'],['Açougue','🥩'],['Padaria','🥖'],['Laticínios','🧀'],['Frios e Embutidos','🥓'],['Mercearia','🛒'],['Bebidas','🥤'],['Limpeza','🧽'],['Higiene','🧴'],['Congelados','🧊'],['Doces e Snacks','🍫'],['Pet','🐾'],['Bebê','🍼'],['Outros','📦']];
   const col=['#1B8A5A','#C9472E','#D8982F','#E8C24A','#B5651D','#16615E','#5B7DB1','#3FB57E','#9B5BB1','#5AAEC9','#D5503A','#8A6A4F','#E89AB5','#62736F'];
@@ -761,6 +786,7 @@ function migrate(){
     DB.version=4;
   }
   DB.categories.forEach((c,i)=>{if(c.order==null)c.order=i;});
+  DB.cartoes=DB.cartoes||[];
   // Mercado module (v5)
   DB.mercado=DB.mercado||seedMercado();
   DB.mercado.stores=DB.mercado.stores||[];
@@ -775,6 +801,8 @@ function save(){if(saveTimer)clearTimeout(saveTimer);setSync('pending');saveTime
 
 /* ===== COMPUTED ===== */
 const formaById=id=>DB.formas.find(f=>f.id===id);
+const formaCartoes=id=>(DB.cartoes||[]).filter(c=>c.formaId===id);
+const NO_CARTAO_IDS=new Set(['forma_debito','forma_pix','forma_mumbuca','forma_dinheiro']);
 const catById=id=>DB.categories.find(c=>c.id===id)||{name:'Sem categoria',emoji:'❓',color:'#8A9794',kind:'saida'};
 const catsByKind=k=>DB.categories.filter(c=>c.kind===k).sort((a,b)=>(a.order??0)-(b.order??0));
 function formaBalance(id){let b=0;for(const t of DB.transactions){if(t.formaId!==id)continue;b+=t.type==='entrada'?t.amountCents:-t.amountCents;}return b;}
@@ -784,7 +812,8 @@ function balCompromisso(){let e=0,s=0;for(const t of DB.transactions){if(t.type=
 const monthTx=ym=>DB.transactions.filter(t=>t.date.slice(0,7)===ym);
 const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type).reduce((s,t)=>s+t.amountCents,0);
 function parcelaInfo(ym){
-  const ps=monthTx(ym).filter(t=>t.parcelado&&t.totalParcelas>1);
+  // Apenas parcelas vindas de meses anteriores (parcela > 1)
+  const ps=monthTx(ym).filter(t=>t.parcelado&&t.totalParcelas>1&&t.parcela>1);
   const end=ps.filter(t=>t.parcela>=t.totalParcelas), cont=ps.filter(t=>t.parcela<t.totalParcelas);
   const sum=a=>a.reduce((s,t)=>s+t.amountCents,0);
   ps.sort((a,b)=>(a.totalParcelas-a.parcela)-(b.totalParcelas-b.parcela)||a.date.localeCompare(b.date));
@@ -806,13 +835,30 @@ function initUI(){
   initDragOnce();
   renderAll();
 }
+let curModule='financas';
+function toggleModDrop(){const d=document.getElementById('modDrop');d.classList.toggle('open');}
+document.addEventListener('click',e=>{const sw=document.getElementById('modSwitcher');if(sw&&!sw.contains(e.target))document.getElementById('modDrop')?.classList.remove('open');});
+function switchModule(mod){
+  curModule=mod;
+  document.getElementById('modDrop').classList.remove('open');
+  document.getElementById('navFinancas').classList.toggle('hidden',mod==='mercado');
+  document.getElementById('navMercado').classList.toggle('hidden',mod!=='mercado');
+  document.getElementById('modBtnFinancas').classList.toggle('active-mod',mod==='financas');
+  document.getElementById('modBtnMercado').classList.toggle('active-mod',mod==='mercado');
+  const sa=document.getElementById('sideAction');
+  if(sa){sa.textContent=mod==='mercado'?'+ Nova compra':'+ Novo lançamento';sa.onclick=mod==='mercado'?mercNewPurchase:openTx;}
+  if(mod==='mercado')go('mercado');else go('home');}
+
 const TITLES={home:'Início',tx:'Lançamentos',mercado:'Mercado',charts:'Análise',budget:'Orçamento',cats:'Categorias',config:'Ajustes'};
 function go(scr){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('scr-'+scr).classList.add('active');
   document.querySelectorAll('[data-scr]').forEach(b=>b.classList.toggle('on',b.dataset.scr===scr));
-  document.getElementById('pageTitle').textContent=TITLES[scr]||'';
+  document.getElementById('pageTitle').textContent=TITLES[scr]||scr;
   window.scrollTo({top:0});
+  // auto-switch module sidebar when navigating
+  if(scr==='mercado'&&curModule!=='mercado'){curModule='mercado';document.getElementById('navFinancas')?.classList.add('hidden');document.getElementById('navMercado')?.classList.remove('hidden');document.getElementById('modBtnFinancas')?.classList.remove('active-mod');document.getElementById('modBtnMercado')?.classList.add('active-mod');const sa=document.getElementById('sideAction');if(sa){sa.textContent='+ Nova compra';sa.onclick=mercNewPurchase;}}
+  if(scr!=='mercado'&&curModule==='mercado'){curModule='financas';document.getElementById('navFinancas')?.classList.remove('hidden');document.getElementById('navMercado')?.classList.add('hidden');document.getElementById('modBtnFinancas')?.classList.add('active-mod');document.getElementById('modBtnMercado')?.classList.remove('active-mod');const sa=document.getElementById('sideAction');if(sa){sa.textContent='+ Novo lançamento';sa.onclick=openTx;}}
   if(scr==='home')renderHome();
   if(scr==='mercado'&&window.mercShow)mercShow();
   if(scr==='charts')renderCharts();
@@ -841,7 +887,7 @@ function renderHome(){
     <div class="kpi"><div class="k-lab"><span class="dot" style="background:var(--saida)"></span>Saídas do mês</div><div class="k-val num" style="color:var(--saida)">${money(mOutAll)}</div></div>
     <div class="kpi"><div class="k-lab">Resultado do mês</div><div class="k-val num" style="color:${net>=0?'var(--entrada)':'var(--saida)'}">${money(net)}</div></div>
     <div class="kpi"><div class="k-lab">Parcelas do mês</div><div class="k-val num">${money(pinf.totalSum)}</div></div>`;
-  const recent=[...DB.transactions].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,7);
+  const recent=monthTx(curMonth).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,8);
   const box=document.getElementById('homeTx');
   box.innerHTML=recent.length?recent.map(txCard).join(''):emptyHTML('🪙','Tudo começa aqui','Toque em + para registrar o primeiro lançamento.');
   if(recent.length)bindCards(box);
@@ -893,7 +939,8 @@ function renderTx(){
   if(!scopeAll){
     const pinf=parcelaInfo(curMonth);
     const parc=pinf.ps.filter(match);
-    const normais=list.filter(t=>!(t.parcelado&&t.totalParcelas>1)).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    // normais = não parcelado OU primeira parcela (começa este mês, trata como normal)
+    const normais=list.filter(t=>!(t.parcelado&&t.totalParcelas>1&&t.parcela>1)).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
     let html='';
     if(pinf.ps.length){
       html+=`<div class="psum">
@@ -1100,9 +1147,17 @@ function renderManage(){
   // formas in config
   const fm=document.getElementById('formaManage');
   fm.innerHTML=DB.formas.map(f=>{const n=DB.transactions.filter(t=>t.formaId===f.id).length;
-    return `<button class="row" onclick="openForma('${f.id}')">
-    <div class="row-ico" style="background:${f.color}22;color:${f.color}">${f.emoji}</div>
-    <div class="row-mid"><div class="row-title">${esc(f.name)}</div><div class="row-sub">${n} lançamento(s)</div></div><span class="chev">›</span></button>`;}).join('')
+    const cs=formaCartoes(f.id);const noC=NO_CARTAO_IDS.has(f.id);
+    return `<div style="border-bottom:1px solid var(--line)">
+      <button class="row" style="border-bottom:none" onclick="openForma('${f.id}')">
+        <div class="row-ico" style="background:${f.color}22;color:${f.color}">${f.emoji}</div>
+        <div class="row-mid"><div class="row-title">${esc(f.name)}</div>
+          <div class="row-sub">${n} lançamento(s)${noC?'':' · '+cs.length+' cartão(ões)'}</div></div><span class="chev">›</span></button>
+      ${noC?'':cs.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 16px 8px 56px;background:var(--paper)">
+        <div class="num" style="font-size:13px;flex:1">···${(c.numero||'').slice(-4)} ${esc(c.apelido||'')}</div>
+        <button class="iconbtn" onclick="openCartao('${c.id}')">✎</button></div>`).join('')+
+        `<button onclick="addCartaoInline('${f.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 16px 10px 56px;font-size:13px;color:var(--teal);font-weight:600">+ Adicionar cartão</button>`}
+    </div>`;}).join('')
     ||'<div style="padding:16px;color:var(--muted);font-size:13px">Nenhuma forma.</div>';
   document.getElementById('catCount').textContent=DB.categories.length+' categorias · arrastar para reordenar';
 }
@@ -1181,7 +1236,22 @@ function delForma(id){const n=DB.transactions.filter(t=>t.formaId===id).length;
   DB.formas=DB.formas.filter(f=>f.id!==id);DB.transactions=DB.transactions.filter(t=>t.formaId!==id);
   save();closeSheet();renderAll();toast('Forma excluída');}
 
-/* ===== NOVO/EDITAR LANÇAMENTO ===== */
+/* cartões */
+var carDraft=null;
+function addCartaoInline(formaId){carDraft={formaId,numero:'',apelido:''};renderCartaoSheet(formaId);}
+function openCartao(id){const c=(DB.cartoes||[]).find(x=>x.id===id);if(!c)return;carDraft={...c};renderCartaoSheet(c.formaId);}
+function renderCartaoSheet(formaId){const f=formaById(formaId);const editing=!!carDraft.id;
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${editing?'Editar cartão':'Novo cartão'} — ${f?f.emoji+' '+f.name:''}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Número completo (ou só os últimos dígitos)</label><input class="input num" inputmode="numeric" value="${esc(carDraft.numero)}" placeholder="ex: 1234" oninput="carDraft.numero=this.value.replace(/\\D/g,'')"></div>
+    <div class="field"><label>Apelido (aparece no dropdown)</label><input class="input" value="${esc(carDraft.apelido)}" placeholder="ex: Nubank principal" oninput="carDraft.apelido=this.value"></div>
+    <button class="btn btn-primary" onclick="saveCartao()">Salvar</button>
+    ${editing?`<button class="btn btn-danger" style="margin-top:10px" onclick="deleteCartao('${carDraft.id}')">Excluir cartão</button>`:''}`);}
+function saveCartao(){if(!(carDraft.numero||'').trim()&&!(carDraft.apelido||'').trim())return toast('Informe o número ou apelido');
+  if(!DB.cartoes)DB.cartoes=[];
+  if(carDraft.id){const i=DB.cartoes.findIndex(x=>x.id===carDraft.id);DB.cartoes[i]={...DB.cartoes[i],...carDraft};}
+  else DB.cartoes.push({...carDraft,id:uid()});
+  save();closeSheet();renderManage();toast('Cartão salvo ✓');}
+function deleteCartao(id){if(!confirm('Excluir cartão?'))return;DB.cartoes=(DB.cartoes||[]).filter(c=>c.id!==id);save();closeSheet();renderManage();toast('Cartão excluído');}
 var txDraft=null;
 function digitsToCents(s){const d=(s||'').replace(/\D/g,'');return d?parseInt(d,10):0;}
 function splitEqual(total,count){if(count<=0)return[];const base=Math.floor(total/count);let rem=total-base*count;
@@ -1229,10 +1299,14 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
 
     <div class="frow">
-      <div class="field"><label>Forma</label><select class="input" onchange="txDraft.formaId=this.value">
+      <div class="field"><label>Forma</label><select class="input" onchange="txDraft.formaId=this.value;txDraft.cartao='';renderTxSheet()">
         ${DB.formas.map(f=>`<option value="${f.id}" ${t.formaId===f.id?'selected':''}>${f.emoji} ${f.name}</option>`).join('')}</select></div>
-      <div class="field"><label>Cartão</label><input class="input" list="cartoesList" value="${esc(t.cartao||'')}" placeholder="opcional" oninput="txDraft.cartao=this.value"></div>
-    </div>
+      ${(()=>{const cs=formaCartoes(t.formaId);const noC=NO_CARTAO_IDS.has(t.formaId)||(!cs.length&&DB.formas.find(f=>f.id===t.formaId)&&NO_CARTAO_IDS.has(t.formaId));
+        if(NO_CARTAO_IDS.has(t.formaId))return '';
+        if(!cs.length)return `<div class="field"><label>Cartão <button class="link" style="font-size:11px;margin-left:4px" onclick="addCartaoInline('${t.formaId}')">+ Cadastrar</button></label><input class="input" value="" disabled placeholder="Nenhum cartão cadastrado" style="color:var(--muted-2)"></div>`;
+        return `<div class="field"><label>Cartão</label><select class="input" onchange="txDraft.cartao=this.value">
+          <option value="">Selecionar…</option>
+          ${cs.map(c=>`<option value="${c.numero}" ${t.cartao===c.numero?'selected':''}>${esc(c.apelido||c.numero)} ···${(c.numero||'').slice(-4)}</option>`).join('')}</select></div>`;})()}
 
     <div class="field"><label>Descrição</label><input class="input" value="${esc(t.description||'')}" placeholder="ex: Mercado Livre, salário..." oninput="txDraft.description=this.value"></div>
     <div class="field"><label>Observação</label><textarea class="input" placeholder="opcional" oninput="txDraft.note=this.value">${esc(t.note||'')}</textarea></div>
