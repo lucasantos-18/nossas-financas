@@ -264,6 +264,12 @@ td.out{color:var(--saida);font-weight:600}
 .mini-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--paper-2);color:var(--muted)}
 .tbl-actions{display:flex;gap:6px}
 .iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--paper);border:1px solid var(--line);font-size:13px}
+/* tabela 2 — colunas dimensionadas */
+table.tx-tbl2{table-layout:auto}
+table.tx-tbl2 .c-data{width:96px}
+table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:110px}
+table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:160px}
+table.tx-tbl2 th:last-child,table.tx-tbl2 td:last-child{width:44px}
 
 /* ===== AUTH ===== */
 #auth{max-width:440px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:32px 24px calc(32px + var(--safe-b))}
@@ -341,6 +347,12 @@ td.out{color:var(--saida);font-weight:600}
 .seg-sm{display:flex;background:var(--paper-2);border-radius:11px;padding:3px;width:fit-content}
 .seg-sm button{padding:7px 13px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--muted)}
 .seg-sm button.on{background:var(--surface);box-shadow:var(--shadow);color:var(--ink)}
+.imp-tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:480px}
+.imp-tbl thead th{background:var(--ink);color:#CBE0DD;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;padding:9px 10px;text-align:left;white-space:nowrap}
+.imp-tbl th.r{text-align:right}
+.imp-tbl tbody td{padding:9px 10px;border-top:1px solid var(--line);white-space:nowrap}
+.imp-tbl tbody td.r{text-align:right}
+.imp-tbl tbody td:first-child{white-space:normal;min-width:140px}
 @media(min-width:900px){
   .merc-actions{max-width:440px}
   .merc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
@@ -982,22 +994,33 @@ function txCard(t){const c=catById(t.categoryId),f=formaById(t.formaId);
     <div class="tx-amt ${t.type==='entrada'?'in':'out'}">${sign} ${money(t.amountCents)}</div></button>`;}
 function txTable(list,isParc){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
+  // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente
+  const chrono=[...list].sort((a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt);
+  const saldoMap={};let run=0;
+  chrono.forEach(t=>{
+    if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
+    else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
+    else saldoMap[t.id]=null; // competência não movimenta caixa → sem saldo
+  });
   const rows=list.map(t=>{const c=catById(t.categoryId),f=formaById(t.formaId);const pc=parcClass(t);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
+    const sld=saldoMap[t.id];
     return `<tr class="${pc}" data-id="${t.id}">
-      <td class="td-num">${fmtDate(t.date)}</td>
+      <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
       <td class="r in td-num">${t.type==='entrada'?money(t.amountCents):''}</td>
       <td class="r out td-num">${t.type==='saida'?money(t.amountCents):''}</td>
-      <td><span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span></td>
+      <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
+      <td style="text-align:center"><span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span></td>
       <td class="td-num" style="text-align:center">${parc}</td>
       <td>${f?esc(f.name):''}</td>
-      <td>${esc(t.cartao||'')}</td>
+      <td class="td-num" style="text-align:center">${esc(t.cartao||'—')}</td>
       <td><span class="catdot" style="background:${c.color}"></span>${c.name}</td>
       <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
       <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}).join('');
-  return `<div class="tbl-wrap"><table class="tx-tbl"><thead><tr>
-    <th>Data</th><th class="r">Entrada</th><th class="r">Saída</th><th>Regime</th><th style="text-align:center">Parc</th>
-    <th>Forma</th><th>Cartão</th><th>Categoria</th><th>Descrição</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+  return `<div class="tbl-wrap"><table class="tx-tbl tx-tbl2"><thead><tr>
+    <th class="c-data" style="text-align:center">Data</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Saldo</th>
+    <th style="text-align:center">Regime</th><th style="text-align:center">Parc</th>
+    <th>Forma</th><th style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();openTx(b.dataset.id);});}
 function dayLabel(iso){const t=new Date().toISOString().slice(0,10);if(iso===t)return'Hoje';
   const y=new Date(Date.now()-864e5).toISOString().slice(0,10);if(iso===y)return'Ontem';
@@ -1744,54 +1767,144 @@ async function mercImportPDF(file){
     for(let p=1;p<=pdf.numPages;p++){
       const page=await pdf.getPage(p);
       const ct=await page.getTextContent();
-      // sort by vertical position then horizontal
-      const items=[...ct.items].sort((a,b)=>Math.round(b.transform[5]/4)*4-Math.round(a.transform[5]/4)*4||a.transform[4]-b.transform[4]);
-      let lastY=null,line='';
-      items.forEach(it=>{const y=Math.round(it.transform[5]/3)*3;
-        if(lastY!==null&&Math.abs(y-lastY)>3){lines.push(line.trim());line='';}
-        line+=(line?' ':'')+it.str;lastY=y;});
-      if(line.trim())lines.push(line.trim());
+      const items=[...ct.items].filter(i=>i.str!=null);
+      // agrupa por linha (mesma coordenada Y aproximada)
+      const byY={};
+      items.forEach(it=>{const y=Math.round(it.transform[5]);const key=Object.keys(byY).find(k=>Math.abs(k-y)<=3);(byY[key!==undefined?key:y]=byY[key!==undefined?key:y]||[]).push(it);});
+      Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
+        const lineItems=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]);
+        lines.push(lineItems.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim());
+      });
     }
-    const txt=lines.join('\n');
-    parseDanfeNFCe(txt);
+    lines=lines.filter(l=>l.length);
+    parseDanfeNFCe(lines);
   }catch(e){console.error(e);toast('Erro ao ler PDF: '+(e.message||e));}
 }
-function parseDanfeNFCe(txt){
-  // CNPJ → loja
-  const cnpjM=txt.match(/CNPJ[:\s]*([\d]{2}\.?[\d]{3}\.?[\d]{3}\/?[\d]{4}-?[\d]{2})/i);
-  const cnpj=cnpjM?(cnpjM[1].replace(/\D/g,'')):null;
-  const store=cnpj?M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===cnpj):null;
+function parseDanfeNFCe(lines){
+  const txt=lines.join('\n');
+  const num=s=>{if(!s)return 0;return Math.round(parseFloat(String(s).replace(/\./g,'').replace(',','.'))*100);};
+  const numF=s=>parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0;
 
-  // data/hora
+  // ===== INFORMAÇÕES DO MERCADO =====
+  const cnpjM=txt.match(/CNPJ[:\s]*([\d]{2}[.\s]?[\d]{3}[.\s]?[\d]{3}[\/\s]?[\d]{4}[-\s]?[\d]{2})/i);
+  const cnpj=cnpjM?cnpjM[1].replace(/\D/g,''):'';
+  // nome da loja = linha antes do CNPJ (geralmente em maiúsculas, razão social)
+  let storeName='';
+  const cnpjLineIdx=lines.findIndex(l=>/CNPJ/i.test(l));
+  if(cnpjLineIdx>0){for(let i=cnpjLineIdx;i>=Math.max(0,cnpjLineIdx-3);i--){const l=lines[i].replace(/CNPJ.*/i,'').trim();
+    if(l.length>4&&/[A-Z]{3}/.test(l)&&!/NOTA FISCAL|DOCUMENTO|NFC/i.test(l)){storeName=l;break;}}}
+  // endereço = linha após o CNPJ
+  let address='';
+  if(cnpjLineIdx>=0&&lines[cnpjLineIdx+1]&&!/Qtde|Vl\./i.test(lines[cnpjLineIdx+1]))address=lines[cnpjLineIdx+1].trim();
+
+  // data/hora de emissão
   let datetime=new Date().toISOString().slice(0,16);
-  const dtM=txt.match(/Emiss[aã]o[:\s]*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/i);
-  if(dtM)datetime=`${dtM[3]}-${dtM[2]}-${dtM[1]}T${dtM[4]}`;
+  const dtM=txt.match(/Emiss[aã]o[:\s]*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/i)||txt.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2}:\d{2})/);
+  if(dtM)datetime=`${dtM[3]}-${dtM[2]}-${dtM[1]}T${dtM[4].slice(0,5)}`;
 
-  // total a pagar
-  const totM=txt.match(/Valor a pagar R\$[:\s]*([\d]+[,.][\d]+)/i);
-  const totalCents=totM?Math.round(parseFloat(totM[1].replace(',','.'))*100):0;
-
-  // chave de acesso
+  // valores
+  const qtdItensM=txt.match(/Qtd\.?\s*total de itens[:\s]*(\d+)/i);
+  const totalM=txt.match(/Valor total R\$[:\s]*([\d.,]+)/i);
+  const descM=txt.match(/Descontos? R\$[:\s]*([\d.,]+)/i);
+  const pagarM=txt.match(/Valor a pagar R\$[:\s]*([\d.,]+)/i);
+  const pagoM=txt.match(/Valor pago R\$[:\s]*([\d.,]+)/i);
+  const tribM=txt.match(/Tributos Totais Incidentes[^\n]*?12\.741[^\n)]*\)\s*R?\$?\s*([\d.,]+)/i)||txt.match(/Tributos[^\n]*?Lei[^\n)]*\)\s*R?\$?\s*([\d.,]+)/i);
+  const formaM=txt.match(/Forma de pagamento[:\s]*\n?([^\n]+)/i);
   const chaveM=txt.match(/(\d{44})/);
-  const chave=chaveM?chaveM[1]:'';
 
-  // itens — padrão NFC-e: linha de produto, depois "Qtde.:X UN: Y Vl. Unit.: Z", depois "Vl. Total", depois valor
+  const info={
+    cnpj,storeName,address,datetime,
+    qtdItens:qtdItensM?parseInt(qtdItensM[1]):null,
+    totalCents:totalM?num(totalM[1]):0,
+    descontoCents:descM?num(descM[1]):0,
+    pagarCents:pagarM?num(pagarM[1]):(pagoM?num(pagoM[1]):0),
+    tributosCents:tribM?num(tribM[1]):0,
+    formaPagamento:formaM?formaM[1].replace(/Valor pago.*/i,'').trim():'',
+    chave:chaveM?chaveM[1]:''
+  };
+
+  // ===== ITENS =====
+  // Procura padrão: "NOME (Código: XXX) Qtde.:N UN: U Vl. Unit.: V" e o "Vl. Total" seguido do valor
   const items=[];
-  const itemRe=/([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀÜ][^\n]+?)\s*\n[^\n]*Qtde\.:([0-9.,]+)\s+UN:\s+(\w+)\s+Vl\. Unit\.:\s+([0-9.,]+)\s*\nVl\. Total\s*\n([0-9.,]+)/gim;
-  let m;
-  while((m=itemRe.exec(txt))!==null){
-    const name=m[1].replace(/\s*\(Código:[^)]*\)/,'').trim();
-    const qty=parseFloat(m[2].replace(',','.'));
-    const unit=m[3].toUpperCase();
-    const totalItem=Math.round(parseFloat(m[5].replace(',','.'))*100);
-    const unitType=unit==='KG'?'peso':unit==='L'?'volume':'unidade';
-    const canonUnit=unit==='KG'?'kg':unit==='L'?'L':'un';
-    items.push({name,qty,unit:canonUnit,unitType,totalCents:totalItem,categoryId:M().categories[0]?.id||''});
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    // linha que contém Qtde. e Vl. Unit.
+    const qm=l.match(/Qtde\.?:?\s*([\d.,]+)\s+UN:?\s*(\w+)\s+Vl\.?\s*Unit\.?:?\s*([\d.,]+)/i);
+    if(!qm)continue;
+    const qty=numF(qm[1]);
+    const unit=(qm[2]||'UN').toUpperCase();
+    const vUnit=num(qm[3]);
+    // nome = parte antes de "Qtde" nesta linha, ou linha anterior
+    let name=l.split(/Qtde/i)[0].replace(/\(C[oó]digo:[^)]*\)/i,'').trim();
+    if(name.length<3&&i>0)name=lines[i-1].replace(/\(C[oó]digo:[^)]*\)/i,'').trim();
+    name=name.replace(/\(C[oó]digo:[^)]*\)/i,'').replace(/\s+/g,' ').trim();
+    // valor total = procura "Vl. Total" nas próximas 2 linhas ou número no fim
+    let vTotal=0;
+    const totInline=l.match(/Vl\.?\s*Total\s*([\d.,]+)/i);
+    if(totInline)vTotal=num(totInline[1]);
+    else{for(let j=i;j<Math.min(lines.length,i+3);j++){const tm=lines[j].match(/Vl\.?\s*Total\s*\n?\s*([\d.,]+)/i)||(/Vl\.?\s*Total/i.test(lines[j])&&lines[j+1]&&lines[j+1].match(/^([\d.,]+)$/));
+      if(tm){vTotal=num(tm[1]);break;}}}
+    if(!vTotal)vTotal=Math.round(qty*vUnit); // fallback: qtd × unitário
+    const unitType=unit==='KG'?'peso':(unit==='L'||unit==='LT')?'volume':'unidade';
+    const canonUnit=unit==='KG'?'kg':(unit==='L'||unit==='LT')?'L':'un';
+    if(name)items.push({name,qty,unit:canonUnit,unitType,vUnitCents:vUnit,totalCents:vTotal,categoryId:M().categories[0]?.id||''});
   }
 
-  // abre nova compra pré-preenchida
-  mercNewPurchase({storeId:store?.id||null,cnpj,datetime,chave,source:'pdf',items,prefillItems:true});
-  toast(items.length?`PDF importado: ${items.length} itens encontrados`:'PDF lido — revise e adicione os itens');
+  if(!items.length&&!info.cnpj){toast('Não consegui ler esse PDF. Tente o de outro modelo ou lance manual.');return;}
+  mercShowImportReview(info,items);
+}
+
+var mercImportData=null;
+function mercShowImportReview(info,items){
+  mercImportData={info,items};
+  const store=info.cnpj?M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===info.cnpj):null;
+  const itemsTotal=items.reduce((s,it)=>s+it.totalCents,0);
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Revisar nota importada</h2><button class="x" onclick="closeSheet()">✕</button></div>
+
+    <div class="dgroup-h">Informações do mercado</div>
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${storeLogoHTML(store,'lg')}
+        <div style="flex:1"><div style="font-weight:600;font-size:15px">${esc(info.storeName||store?.name||'Mercado não identificado')}</div>
+        ${store?'<div style="font-size:11.5px;color:var(--entrada);font-weight:600">✓ já cadastrado</div>':'<div style="font-size:11.5px;color:var(--amber);font-weight:600">novo — será criado ao salvar</div>'}</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12.5px">
+        ${info.cnpj?`<div><span style="color:var(--muted)">CNPJ:</span> <b class="num">${esc(info.cnpj)}</b></div>`:''}
+        ${info.address?`<div style="grid-column:1/-1"><span style="color:var(--muted)">Endereço:</span> ${esc(info.address)}</div>`:''}
+        <div><span style="color:var(--muted)">Data:</span> ${fmtDateTime(info.datetime)}</div>
+        ${info.formaPagamento?`<div><span style="color:var(--muted)">Pagamento:</span> ${esc(info.formaPagamento)}</div>`:''}
+      </div>
+    </div>
+
+    <div class="dgroup-h">Valores da nota</div>
+    <div class="card" style="padding:12px;margin-bottom:14px">
+      <div class="ph-row" style="padding:6px 0"><span style="flex:1;color:var(--muted);font-size:13px">Qtd. de itens</span><b class="num">${info.qtdItens??items.length}</b></div>
+      <div class="ph-row" style="padding:6px 0"><span style="flex:1;color:var(--muted);font-size:13px">Valor total</span><b class="num">${money(info.totalCents||itemsTotal)}</b></div>
+      ${info.descontoCents?`<div class="ph-row" style="padding:6px 0"><span style="flex:1;color:var(--muted);font-size:13px">Descontos</span><b class="num" style="color:var(--entrada)">− ${money(info.descontoCents)}</b></div>`:''}
+      <div class="ph-row" style="padding:6px 0"><span style="flex:1;font-weight:600;font-size:13px">Valor a pagar</span><b class="num" style="font-size:15px">${money(info.pagarCents||itemsTotal)}</b></div>
+      ${info.tributosCents?`<div class="ph-row" style="padding:6px 0;border:none"><span style="flex:1;color:var(--muted-2);font-size:12px">Tributos (Lei 12.741)</span><span class="num" style="color:var(--muted-2);font-size:12px">${money(info.tributosCents)}</span></div>`:''}
+    </div>
+
+    <div class="dgroup-h">Produtos lidos (${items.length})</div>
+    <div style="overflow-x:auto;margin-bottom:14px;border:1px solid var(--line);border-radius:14px">
+      <table class="imp-tbl"><thead><tr><th>Produto</th><th>Qtd</th><th>Un</th><th class="r">Unit.</th><th class="r">Total</th><th class="r">R$/un</th></tr></thead>
+      <tbody>${items.map((it,i)=>{const cq=toCanonQty(it.unitType,it.unit,it.qty);const up=cq>0?Math.round(it.totalCents/cq):0;
+        return `<tr><td>${esc(it.name)}</td><td class="num" style="text-align:center">${(''+it.qty).replace('.',',')}</td>
+        <td style="text-align:center">${it.unit}</td><td class="r num">${money(it.vUnitCents||0)}</td>
+        <td class="r num" style="font-weight:600">${money(it.totalCents)}</td><td class="r num" style="color:var(--muted)">${money(up)}</td></tr>`;}).join('')}</tbody></table>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">Ao continuar, você poderá ajustar categoria, forma de pagamento e salvar. Produtos novos serão criados automaticamente.</p>
+    <button class="btn btn-primary" onclick="mercConfirmImport()">Continuar para lançar</button>`);
+}
+function mercConfirmImport(){if(!mercImportData)return;const{info,items}=mercImportData;
+  const store=info.cnpj?M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===info.cnpj):null;
+  // se loja não existe mas temos dados, cria automaticamente
+  let storeId=store?.id||null;
+  if(!storeId&&(info.storeName||info.cnpj)){
+    storeId=uid();
+    M().stores.push({id:storeId,name:info.storeName||('Mercado '+(info.cnpj||'').slice(0,8)),cnpj:info.cnpj||'',emoji:'🛒',logoUrl:'',color:'#16615E',address:info.address||''});
+    save();
+  }
+  closeSheet();
+  mercNewPurchase({storeId,cnpj:info.cnpj,datetime:info.datetime,chave:info.chave,source:'pdf',items,prefillItems:true});
 }
 
 window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScanner.stop().then(()=>{try{window.html5QrScanner.clear();}catch(e){}window.html5QrScanner=null;}).catch(()=>{window.html5QrScanner=null;});}catch(e){window.html5QrScanner=null;}}};
