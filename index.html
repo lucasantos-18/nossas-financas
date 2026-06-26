@@ -652,8 +652,9 @@ async function afterAuth(){
     else USER={username:'eu',name:'Você'};}catch(e){USER={username:'eu',name:'Você'};}
   document.getElementById('auth').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  try{setSync('sync');await ensureSheets();await loadData();initUI();setSync('ok');}
-  catch(e){console.error(e);toast('Erro ao acessar a planilha: '+(e.message||e));setSync('err');}
+  try{setSync('sync');await ensureSheets();await loadData();initUI();setSync('ok');
+    localStorage.setItem('nf_hint',USER.email||'');
+  }catch(e){console.error(e);toast('Erro ao acessar a planilha: '+(e.message||e));setSync('err');}
 }
 
 /* ===== STATE ===== */
@@ -1651,10 +1652,10 @@ window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScann
 /* ===== BOOT ===== */
 (async function(){
   await initGoogleAuth();
-  // tenta entrar em silêncio (se já autorizou antes e a sessão Google está ativa)
   if(tokenClient){
+    const hint=localStorage.getItem('nf_hint')||'';
     tokenClient.callback=async(r)=>{if(r&&r.access_token){googleAccessToken=r.access_token;await afterAuth();}};
-    try{tokenClient.requestAccessToken({prompt:''});}catch(e){}
+    try{tokenClient.requestAccessToken({prompt:'',login_hint:hint});}catch(e){}
   }
 })();
 </script>
