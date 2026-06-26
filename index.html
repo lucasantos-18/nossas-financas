@@ -345,6 +345,11 @@ td.out{color:var(--saida);font-weight:600}
 /* bottom nav with 6 items */
 .nav-inner.six .nav-btn{font-size:9px}
 .nav-inner.six .nav-btn svg{width:21px;height:21px}
+.g-signin{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;border:1px solid var(--line);border-radius:14px;background:#fff;font-weight:600;font-size:15px;color:#3c4043;box-shadow:var(--shadow);cursor:pointer}
+.g-signin:hover{background:#f7f8f8}
+.sync-badge{position:fixed;left:14px;bottom:86px;z-index:60;font-size:11.5px;font-weight:600;padding:7px 12px;border-radius:999px;box-shadow:var(--shadow);background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:7px}
+.sync-badge .sd{width:8px;height:8px;border-radius:50%}
+@media(min-width:900px){.sync-badge{left:auto;right:18px;bottom:18px}}
 </style>
 </head>
 <body>
@@ -357,14 +362,16 @@ td.out{color:var(--saida);font-weight:600}
     <p>Controle de gastos, em qualquer lugar.</p>
   </div>
   <div class="auth-card">
-    <div id="g_id_onload" data-client_id="699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googleusercontent.com" data-callback="handleCredentialResponse"></div>
-    <div class="g_id_signin" data-type="standard" data-size="large" data-theme="light" style="margin:18px auto;display:flex;justify-content:center"></div>
-    <p class="auth-note" style="margin-top:22px">Você entra com sua conta Google. Os dados ficam guardados numa planilha sua no Google Drive.</p>
+    <button class="g-signin" onclick="signIn()">
+      <svg viewBox="0 0 48 48" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.8-6.8C35.6 2.4 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.6 6.9l7.1 5.5c4.1-3.8 6.5-9.4 6.5-16.9z"/><path fill="#FBBC05" d="M10.4 28.6c-.5-1.4-.7-2.9-.7-4.6s.3-3.2.7-4.6l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.5 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.1-5.5c-2 1.4-4.6 2.2-8.1 2.2-6.3 0-11.7-3.7-13.6-9.4l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
+      Entrar com Google</button>
+    <p class="auth-note" style="margin-top:22px">Você entra com sua conta Google. Seus dados ficam numa planilha sua no Drive — uma aba para cada tipo de informação.</p>
   </div>
 </div>
 
 <!-- ============ APP ============ -->
 <div id="app" class="hidden">
+  <div id="syncBadge" class="sync-badge hidden"></div>
   <!-- sidebar (desktop) -->
   <aside class="sidebar">
     <div class="brand"><div class="brand-mark"><span>NF</span></div>
@@ -400,7 +407,7 @@ td.out{color:var(--saida);font-weight:600}
       <div class="balance-cards">
         <div class="bcard">
           <div class="bcard-label">Saldo em caixa</div>
-          <div class="bcard-sub">dinheiro que você tem de verdade</div>
+          <div class="bcard-sub">entradas − saídas à vista, no mês</div>
           <div class="bcard-val num" id="c1Bal">R$ 0,00</div>
           <div class="flow"><div class="flow-bar"><span class="flow-in" id="c1In"></span><span class="flow-out" id="c1Out"></span></div>
             <div class="flow-legend">
@@ -410,7 +417,7 @@ td.out{color:var(--saida);font-weight:600}
         </div>
         <div class="bcard alt">
           <div class="bcard-label">Saldo comprometido</div>
-          <div class="bcard-sub">entradas − gastos (caixa + competência)</div>
+          <div class="bcard-sub">entradas − todos os gastos do mês (só a parcela do mês)</div>
           <div class="bcard-val num" id="c2Bal">R$ 0,00</div>
           <div class="flow"><div class="flow-bar"><span class="flow-in" id="c2In"></span><span class="flow-out" id="c2Out"></span></div>
             <div class="flow-legend">
@@ -549,71 +556,105 @@ td.out{color:var(--saida);font-weight:600}
 <datalist id="cartoesList"></datalist>
 
 <script>
-/* ===== STORAGE (Google Sheets) ===== */
+/* ===== STORAGE (Google Sheets — layout relacional, uma aba por tabela) ===== */
 const SHEET_ID='1TMzDLDUkEtfaB3a7OGC2LMoRrEMvwy2Uw5E4wyESgMc';
 const GOOGLE_CLIENT_ID='699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googleusercontent.com';
-let googleAuth=null, googleAccessToken=null;
+const SCOPES='openid email profile https://www.googleapis.com/auth/spreadsheets';
+let tokenClient=null, googleAccessToken=null;
 
-async function initGoogleAuth(){
-  return new Promise((resolve)=>{
-    window.google.accounts.id.initialize({
-      client_id:GOOGLE_CLIENT_ID,
-      callback:handleCredentialResponse,
-      auto_select:false
-    });
-    resolve();
-  });
+// Cada "tabela" do app vira uma aba da planilha; cada linha, um registro.
+const TABLES=[
+  {name:'Transacoes',cols:['id','type','amountCents','date','regime','parcelado','parcela','totalParcelas','parcelaGroup','formaId','cartao','categoryId','description','note','createdAt'],
+   num:['amountCents','parcela','totalParcelas','createdAt'],bool:['parcelado'],get:()=>DB.transactions,set:r=>DB.transactions=r},
+  {name:'Formas',cols:['id','name','emoji','color'],get:()=>DB.formas,set:r=>DB.formas=r},
+  {name:'Categorias',cols:['id','name','emoji','color','kind','order'],num:['order'],get:()=>DB.categories,set:r=>DB.categories=r},
+  {name:'Metas',cols:['id','name','emoji','color','targetCents','savedCents'],num:['targetCents','savedCents'],get:()=>DB.goals,set:r=>DB.goals=r},
+  {name:'Orcamentos',cols:['month','categoryId','cents'],num:['cents'],
+   get:()=>{const o=[];Object.entries(DB.budgets||{}).forEach(([m,obj])=>Object.entries(obj).forEach(([c,v])=>o.push({month:m,categoryId:c,cents:v})));return o;},
+   set:r=>{const b={};r.forEach(x=>{if(!x.month)return;(b[x.month]=b[x.month]||{})[x.categoryId]=x.cents;});DB.budgets=b;}},
+  {name:'Config',cols:['key','value'],
+   get:()=>{const o=[{key:'version',value:String(DB.version||SCHEMA)}];Object.entries(DB.settings||{}).forEach(([k,v])=>o.push({key:'set:'+k,value:JSON.stringify(v)}));return o;},
+   set:r=>{DB.settings=DB.settings||{};r.forEach(x=>{if(x.key==='version')DB.version=parseInt(x.value)||DB.version;else if((x.key||'').startsWith('set:')){try{DB.settings[x.key.slice(4)]=JSON.parse(x.value);}catch(e){DB.settings[x.key.slice(4)]=x.value;}}});}},
+  {name:'Mercado_Lojas',cols:['id','name','cnpj','emoji','logoUrl','color','address'],get:()=>M().stores,set:r=>M().stores=r},
+  {name:'Mercado_Categorias',cols:['id','name','emoji','color','order'],num:['order'],get:()=>M().categories,set:r=>M().categories=r},
+  {name:'Mercado_Produtos',cols:['id','name','categoryId','unitType','emoji'],get:()=>M().products,set:r=>M().products=r},
+  {name:'Mercado_Compras',cols:['id','storeId','datetime','totalCents','formaId','chave','source','txId','createdAt'],num:['totalCents','createdAt'],get:()=>M().purchases,set:r=>M().purchases=r},
+  {name:'Mercado_Itens',cols:['id','purchaseId','productId','categoryId','qty','unit','canonQty','totalCents','unitPriceCanonCents','createdAt'],num:['qty','canonQty','totalCents','unitPriceCanonCents','createdAt'],get:()=>M().items,set:r=>M().items=r},
+];
+function rowToObj(arr,t){const o={};t.cols.forEach((c,i)=>{let v=arr[i];
+  if(v===undefined||v==='')v=null;
+  if(t.bool&&t.bool.includes(c)){o[c]=(v===true||v==='TRUE'||v==='true'||v===1||v==='1');return;}
+  if(v!==null&&t.num&&t.num.includes(c))v=Number(v);
+  o[c]=v;});return o;}
+function objToRow(o,t){return t.cols.map(c=>{let v=o[c];
+  if(t.bool&&t.bool.includes(c))return v?'TRUE':'FALSE';
+  if(v===undefined||v===null)return '';return v;});}
+
+function setSync(state){const b=document.getElementById('syncBadge');if(!b)return;
+  const map={pending:['Salvando…','#D8982F'],sync:['Carregando…','#5B7DB1'],ok:['Salvo ✓','#1B8A5A'],err:['Erro ao salvar','#D5503A']};
+  const m=map[state]||map.ok;b.innerHTML=`<span class="sd" style="background:${m[1]}"></span>${m[0]}`;b.classList.remove('hidden');
+  clearTimeout(b._t);if(state==='ok')b._t=setTimeout(()=>b.classList.add('hidden'),1600);}
+
+async function tokenFetch(url,opts,retry){opts=opts||{};opts.headers=Object.assign({'Authorization':'Bearer '+googleAccessToken},opts.headers||{});
+  const resp=await fetch(url,opts);
+  if(resp.status===401&&!retry){const ok=await refreshToken();if(ok)return tokenFetch(url,opts,true);}
+  return resp;}
+function refreshToken(){return new Promise(res=>{if(!tokenClient){res(false);return;}
+  tokenClient.callback=(r)=>{if(r&&r.access_token){googleAccessToken=r.access_token;res(true);}else res(false);};
+  try{tokenClient.requestAccessToken({prompt:''});}catch(e){res(false);}});}
+
+async function ensureSheets(){
+  const meta=await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties.title`);
+  if(!meta.ok)throw new Error('não consegui abrir a planilha (HTTP '+meta.status+')');
+  const data=await meta.json();
+  const have=new Set((data.sheets||[]).map(s=>s.properties.title));
+  const add=TABLES.filter(t=>!have.has(t.name));
+  if(add.length){
+    await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}:batchUpdate`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({requests:add.map(t=>({addSheet:{properties:{title:t.name}}}))})});
+    await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({valueInputOption:'RAW',data:add.map(t=>({range:`'${t.name}'!A1`,values:[t.cols]}))})});
+  }
 }
-function handleCredentialResponse(response){
-  const token=response.credential;
-  const payload=JSON.parse(atob(token.split('.')[1]));
-  USER={username:payload.email,name:payload.name,email:payload.email};
-  googleAccessToken=token;
-  sSet('session:last',payload.email,false);
-  loadData();
+async function loadAll(){
+  const qs=TABLES.map(t=>'ranges='+encodeURIComponent(`'${t.name}'!A2:Z`)).join('&');
+  const resp=await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?${qs}`);
+  if(!resp.ok)throw new Error('falha ao carregar (HTTP '+resp.status+')');
+  const data=await resp.json();const vr=data.valueRanges||[];
+  DB={formas:[],categories:[],transactions:[],budgets:{},goals:[],settings:{},mercado:{stores:[],categories:[],products:[],purchases:[],items:[]}};
+  TABLES.forEach((t,i)=>{const vals=(vr[i]&&vr[i].values)||[];const objs=vals.filter(r=>r&&r.length&&r[0]!==''&&r[0]!=null).map(r=>rowToObj(r,t));t.set(objs);});
+  return DB;
+}
+let saveTimer=null;
+async function saveAll(){
+  if(!googleAccessToken||!DB)return;
+  try{setSync('pending');
+    await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchClear`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ranges:TABLES.map(t=>`'${t.name}'!A2:Z`)})});
+    const data=TABLES.map(t=>({range:`'${t.name}'!A2`,values:(t.get()||[]).map(o=>objToRow(o,t))})).filter(d=>d.values.length);
+    if(data.length)await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({valueInputOption:'RAW',data})});
+    setSync('ok');
+  }catch(e){console.error('saveAll',e);setSync('err');}
+}
+
+/* ===== AUTH (Google OAuth2 — token de acesso com escopo de planilhas) ===== */
+function initGoogleAuth(){return new Promise(resolve=>{(function ready(){
+  if(window.google&&google.accounts&&google.accounts.oauth2){
+    tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:SCOPES,callback:()=>{}});resolve();
+  }else setTimeout(ready,150);})();});}
+function signIn(){if(!tokenClient){toast('Carregando login do Google…');return;}
+  tokenClient.callback=async(r)=>{if(!r||r.error){toast('Login não concluído');return;}googleAccessToken=r.access_token;await afterAuth();};
+  try{tokenClient.requestAccessToken();}catch(e){toast('Não foi possível abrir o login');}}
+async function afterAuth(){
+  try{const ui=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+googleAccessToken}});
+    if(ui.ok){const p=await ui.json();USER={username:p.email,name:p.name||p.email,email:p.email,picture:p.picture};}
+    else USER={username:'eu',name:'Você'};}catch(e){USER={username:'eu',name:'Você'};}
   document.getElementById('auth').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  initUI();
+  try{setSync('sync');await ensureSheets();await loadData();initUI();setSync('ok');}
+  catch(e){console.error(e);toast('Erro ao acessar a planilha: '+(e.message||e));setSync('err');}
 }
-async function sGet(k,sh){
-  if(!googleAccessToken)return null;
-  try{
-    const range=`Dados!${k}`;
-    const resp=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,{
-      headers:{'Authorization':`Bearer ${googleAccessToken}`}
-    });
-    if(!resp.ok)return null;
-    const data=await resp.json();
-    return data.values?.[0]?.[0]||null;
-  }catch(e){console.error(e);return null;}
-}
-async function sSet(k,v,sh){
-  if(!googleAccessToken&&k!=='session:last'){console.error('Not authenticated');return false;}
-  if(k==='session:last'){await window.storage.set(k,v,false);return true;}
-  try{
-    const range=`Dados!${k}`;
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=RAW`,{
-      method:'PUT',
-      headers:{'Authorization':`Bearer ${googleAccessToken}`,'Content-Type':'application/json'},
-      body:JSON.stringify({values:[[v]]})
-    });
-    return true;
-  }catch(e){console.error(e);return false;}
-}
-async function sDel(k,sh){
-  if(!googleAccessToken)return;
-  try{
-    const range=`Dados!${k}`;
-    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,{
-      method:'DELETE',
-      headers:{'Authorization':`Bearer ${googleAccessToken}`}
-    });
-  }catch(e){console.error(e);}
-}
-async function sha256(s){try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
-  catch(e){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0;}return 'f'+(h>>>0).toString(16);}}
-const cleanUser=u=>(u||'').toLowerCase().trim().replace(/[^a-z0-9._-]/g,'');
 
 /* ===== STATE ===== */
 let DB=null, USER=null;
@@ -675,26 +716,18 @@ const EMOJIS=['💰','💵','💸','🪙','💳','🏦','📈','📉','🧾','�
 /* ===== AUTH (Google OAuth2) ===== */
 async function logout(){
   if(!confirm('Sair da conta?'))return;
-  googleAccessToken=null;
-  USER=null;
-  DB=null;
-  await sDel('session:last',false);
+  try{if(googleAccessToken&&window.google&&google.accounts&&google.accounts.oauth2)google.accounts.oauth2.revoke(googleAccessToken,()=>{});}catch(e){}
+  googleAccessToken=null;USER=null;DB=null;
   document.getElementById('app').classList.add('hidden');
   document.getElementById('auth').classList.remove('hidden');
 }
 async function changePass(){toast('A senha é gerenciada pela sua conta Google.');}
 async function loadData(){
-  const raw=await sGet('data:'+USER.username,true);
-  DB=raw?JSON.parse(raw):seed();
-  migrate();
+  await loadAll();           // lê as abas e reconstrói o DB
+  migrate();                 // garante padrões e semeia se a planilha estiver vazia
 }
 
 /* ===== DATA + MIGRATION ===== */
-async function loadData(){
-  const raw=await sGet('data:'+USER.username,true);
-  DB=raw?JSON.parse(raw):seed();
-  migrate();
-}
 function migrate(){
   DB.formas=DB.formas||[]; DB.categories=DB.categories||[]; DB.transactions=DB.transactions||[];
   DB.goals=DB.goals||[]; DB.settings=DB.settings||{};
@@ -737,8 +770,7 @@ function migrate(){
   if(DB.version!==SCHEMA){DB.version=SCHEMA;}
   save();
 }
-let saveTimer=null;
-function save(){if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>sSet('data:'+USER.username,JSON.stringify(DB),true),200);}
+function save(){if(saveTimer)clearTimeout(saveTimer);setSync('pending');saveTimer=setTimeout(saveAll,500);}
 
 /* ===== COMPUTED ===== */
 const formaById=id=>DB.formas.find(f=>f.id===id);
@@ -796,10 +828,10 @@ function renderAll(){document.getElementById('monthLabel').textContent=monthShor
 function setBal(id,c){const el=document.getElementById(id);el.textContent=money(c);el.classList.toggle('neg',c<0);}
 function flowBar(inId,outId,inV,outV){const tt=inV+outV;document.getElementById(inId).style.width=(tt?inV/tt*100:50)+'%';document.getElementById(outId).style.width=(tt?outV/tt*100:50)+'%';}
 function renderHome(){
-  const caixa=balCaixa(), comp=balCompromisso();
   const mIn=monthSum(curMonth,'entrada');
   const mOutAll=monthSum(curMonth,'saida');
   const mOutCaixa=monthTx(curMonth).filter(t=>t.type==='saida'&&t.regime==='caixa').reduce((s,t)=>s+t.amountCents,0);
+  const caixa=mIn-mOutCaixa, comp=mIn-mOutAll;   // referentes ao mês selecionado
   setBal('c1Bal',caixa);document.getElementById('c1InV').textContent=money(mIn);document.getElementById('c1OutV').textContent=money(mOutCaixa);flowBar('c1In','c1Out',mIn,mOutCaixa);
   setBal('c2Bal',comp);document.getElementById('c2InV').textContent=money(mIn);document.getElementById('c2OutV').textContent=money(mOutAll);flowBar('c2In','c2Out',mIn,mOutAll);
   const net=mIn-mOutAll, pinf=parcelaInfo(curMonth);
@@ -1190,7 +1222,7 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
       </div>
       <div class="field"><label style="display:flex;justify-content:space-between"><span>Valor de cada parcela (editável)</span><button class="link" style="background:none;color:var(--teal);font-weight:600;font-size:12px" onclick="regenParcelas();updateParcelas()">Dividir igualmente</button></label>
         <div id="parcEditor" class="pedit"></div></div>`:''}
-    ${(single&&t.parcelaGroup)?`<p style="font-size:12.5px;color:var(--muted);margin:-4px 2px 14px">Parte de um parcelamento (${t.parcela}/${t.totalParcelas}). A edição vale só para esta parcela.</p>`:''}
+    ${(single&&t.parcelaGroup)?`<p style="font-size:12.5px;color:var(--muted);margin:-4px 2px 14px">Parte de um parcelamento (${t.parcela}/${t.totalParcelas}). Ao mudar categoria, forma, descrição etc., você escolhe aplicar só a esta parcela ou a todas.</p>`:''}
 
     <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value">
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
@@ -1227,8 +1259,10 @@ function saveTx(){const t=txDraft;
   if(!t.formaId)return toast('Crie uma forma de pagamento primeiro');
   const base={type:t.type,date:t.date,regime:t.regime,formaId:t.formaId,cartao:(t.cartao||'').trim(),
     categoryId:t.categoryId,description:t.description||'',note:t.note||''};
-  if(editingTx){const i=DB.transactions.findIndex(x=>x.id===editingTx);
-    DB.transactions[i]={...DB.transactions[i],...base,amountCents:t.amountCents};save();closeSheet();renderAll();toast('Atualizado ✓');return;}
+  if(editingTx){const i=DB.transactions.findIndex(x=>x.id===editingTx);const orig=DB.transactions[i];
+    const sharedChanged=orig.parcelaGroup&&(orig.categoryId!==base.categoryId||orig.description!==base.description||orig.note!==base.note||orig.formaId!==base.formaId||(orig.cartao||'')!==base.cartao||orig.regime!==base.regime||orig.type!==base.type);
+    if(sharedChanged){pendingTxEdit={id:editingTx,base:{...base},amountCents:t.amountCents,group:orig.parcelaGroup,parcela:orig.parcela,total:orig.totalParcelas};askParcelaEditScope();return;}
+    DB.transactions[i]={...orig,...base,amountCents:t.amountCents};save();closeSheet();renderAll();toast('Atualizado ✓');return;}
   if(t.parcelado){const N=parseInt(t.totalParcelas)||0,P=parseInt(t.parcela)||1;
     if(!N||N<P)return toast('Informe um total de parcelas válido');
     if(!t.parcelas.length)regenParcelas();
@@ -1239,6 +1273,18 @@ function saveTx(){const t=txDraft;
     save();closeSheet();renderAll();toast(t.parcelas.length+' parcelas lançadas ✓');return;}
   DB.transactions.push({id:uid(),...base,amountCents:t.amountCents,parcelado:false,parcela:1,totalParcelas:1,parcelaGroup:null,createdAt:Date.now()});
   save();closeSheet();renderAll();buildCartoesList();toast('Lançamento adicionado ✓');}
+var pendingTxEdit=null;
+function askParcelaEditScope(){const pe=pendingTxEdit;if(!pe)return;
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Editar parcelamento</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <p style="font-size:13px;color:var(--muted);margin:0 2px 16px">Esta é a parcela ${pe.parcela}/${pe.total}. As mudanças de categoria, forma, descrição etc. devem valer para qual?</p>
+    <button class="btn btn-ghost" style="margin-bottom:10px" onclick="applyParcelaEdit(false)">Só esta parcela</button>
+    <button class="btn btn-primary" onclick="applyParcelaEdit(true)">Todas as parcelas</button>`);}
+function applyParcelaEdit(all){const pe=pendingTxEdit;if(!pe){closeSheet();return;}
+  const i=DB.transactions.findIndex(x=>x.id===pe.id);
+  if(i>=0)DB.transactions[i]={...DB.transactions[i],...pe.base,amountCents:pe.amountCents};
+  if(all){const keys=['type','regime','formaId','cartao','categoryId','description','note'];   // campos compartilhados; valor e data ficam por parcela
+    DB.transactions.forEach(x=>{if(x.parcelaGroup===pe.group&&x.id!==pe.id)keys.forEach(k=>x[k]=pe.base[k]);});}
+  pendingTxEdit=null;save();closeSheet();renderAll();toast(all?'Todas as parcelas atualizadas ✓':'Parcela atualizada ✓');}
 function deleteTx(){const t=DB.transactions.find(x=>x.id===editingTx);
   if(t&&t.parcelaGroup){
     showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Excluir parcelamento</h2><button class="x" onclick="closeSheet()">✕</button></div>
@@ -1266,7 +1312,7 @@ function exportCSV(){if(!DB.transactions.length)return toast('Nada para exportar
   a.download='nossas_financas_'+USER.username+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();toast('CSV exportado ✓');}
 async function wipe(){if(!confirm('Isso apaga TODOS os seus lançamentos, formas, categorias e orçamentos. Tem certeza?'))return;
   if(!confirm('Última confirmação: apagar tudo mesmo?'))return;DB=seed();
-  await sSet('data:'+USER.username,JSON.stringify(DB),true);renderAll();go('home');toast('Dados apagados');}
+  await saveAll();renderAll();go('home');toast('Dados apagados');}
 
 /* ===== UTIL ===== */
 var budTmp=null;
@@ -1605,11 +1651,11 @@ window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScann
 /* ===== BOOT ===== */
 (async function(){
   await initGoogleAuth();
-  setTimeout(()=>{if(window.google)window.google.accounts.id.renderButton(document.querySelector('.g_id_signin'),{theme:'outline',size:'large',text:'signin_with'});},500);
-  const last=await sGet('session:last',false);
-  if(last){const acc=await sGet('auth:'+last,true);
-    if(acc){const a=JSON.parse(acc);USER={username:a.username,name:a.name};await loadData();
-      document.getElementById('auth').classList.add('hidden');document.getElementById('app').classList.remove('hidden');initUI();}}
+  // tenta entrar em silêncio (se já autorizou antes e a sessão Google está ativa)
+  if(tokenClient){
+    tokenClient.callback=async(r)=>{if(r&&r.access_token){googleAccessToken=r.access_token;await afterAuth();}};
+    try{tokenClient.requestAccessToken({prompt:''});}catch(e){}
+  }
 })();
 </script>
 </body>
