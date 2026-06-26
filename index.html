@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
@@ -344,6 +345,7 @@ td.out{color:var(--saida);font-weight:600}
   .merc-actions{max-width:440px}
   .merc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
   .merc-two{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start}
+  .merc-tabs-mobile{display:none}  /* sidebar takes over on desktop */
 }
 /* bottom nav with 6 items */
 .nav-inner.six .nav-btn{font-size:9px}
@@ -551,9 +553,11 @@ td.out{color:var(--saida);font-weight:600}
     <section class="screen" id="scr-mercado">
       <div class="merc-actions">
         <button class="btn btn-primary" onclick="mercNewPurchase()"><span style="font-size:18px;margin-right:2px">+</span> Nova compra</button>
-        <button class="btn btn-ghost" onclick="mercOpenScan()">📷 Escanear nota</button>
+        <button class="btn btn-ghost" onclick="mercOpenScan()">📷 QR Code</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('mercPdfInput').click()">📄 Importar PDF</button>
+        <input type="file" id="mercPdfInput" accept=".pdf" class="hidden" onchange="mercImportPDF(this.files[0]);this.value=''">
       </div>
-      <div class="seg" style="margin-bottom:16px">
+      <div class="seg merc-tabs-mobile" style="margin-bottom:16px">
         <button id="mtab-compras" class="on" onclick="mercSetTab('compras')">Compras</button>
         <button id="mtab-produtos" onclick="mercSetTab('produtos')">Produtos</button>
         <button id="mtab-categorias" onclick="mercSetTab('categorias')">Categorias</button>
@@ -715,7 +719,7 @@ const SAIDAS=[['OFERTA','🙏'],['DOAÇÃO','❤️'],['FINANCIAMENTO','🏦'],[
  ['COMPRAS EXT','🌍'],['FAMÍLIA','👨‍👩‍👧'],['VIAGENS','✈️'],['OUTROS GASTOS','📦'],['DRAXOS','🩸'],
  ['PRO LABORE LUCAS','💼'],['PRO LABORE BRUNA','👩‍💼']];
 const ENTRADAS=[['SALÁRIO LUCAS','💰'],['SALÁRIO BRUNA','💵'],['OUTRAS RENDAS','🪙']];
-const SCOL=['#D5503A','#5B7DB1','#D8982F','#9B5BB1','#1B8A5A','#E8823C','#16615E','#C9472E','#3FB57E','#8A6A4F','#5AAEC9','#B5651D','#62736F','#E89AB5'];
+const CHART_PAL=['#D5503A','#5B7DB1','#D8982F','#1B8A5A','#9B5BB1','#E8823C','#16615E','#C9472E','#3FB57E','#8A6A4F','#5AAEC9','#B5651D','#62736F','#E89AB5'];
 const ECOL=['#1B8A5A','#2E9E6F','#3FB57E'];
 function seedCategories(){
   let o=0; const cats=[];
@@ -913,9 +917,9 @@ function renderHomeCharts(){
     const en=Object.entries(map).sort((a,b)=>b[1]-a[1]);
     if(homeCatChart)homeCatChart.destroy();
     if(!en.length){cEl.getContext('2d').clearRect(0,0,cEl.width,cEl.height);if(leg)leg.innerHTML='<span style="color:var(--muted);font-size:12px;padding:8px">Sem saídas neste mês.</span>';}
-    else{homeCatChart=new Chart(cEl,{type:'doughnut',data:{labels:en.map(([id])=>catById(id).name),datasets:[{data:en.map(([,v])=>v/100),backgroundColor:en.map(([id])=>catById(id).color),borderWidth:2,borderColor:'#fff'}]},
+    else{homeCatChart=new Chart(cEl,{type:'doughnut',data:{labels:en.map(([id])=>catById(id).name),datasets:[{data:en.map(([,v])=>v/100),backgroundColor:en.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
       options:{cutout:'62%',maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.label+': '+BRL.format(c.parsed)}}}}});
-      if(leg)leg.innerHTML=en.slice(0,8).map(([id,v])=>{const c=catById(id);return `<div class="li"><span class="dot" style="background:${c.color}"></span>${c.name} · <b class="num">${money(v)}</b></div>`;}).join('');}}
+      if(leg)leg.innerHTML=en.slice(0,8).map(([id,v],i)=>{const c=catById(id);return `<div class="li"><span class="dot" style="background:${CHART_PAL[i%CHART_PAL.length]}"></span>${c.name} · <b class="num">${money(v)}</b></div>`;}).join('');}}
 }
 
 /* ===== TRANSAÇÕES ===== */
@@ -1014,11 +1018,11 @@ function renderCharts(){
     const cv=document.getElementById('catChart');cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
   else{catChart=new Chart(document.getElementById('catChart'),{type:'doughnut',
     data:{labels:en.map(([id])=>catById(id).name),datasets:[{data:en.map(([,v])=>v/100),
-      backgroundColor:en.map(([id])=>catById(id).color),borderWidth:2,borderColor:'#fff'}]},
+      backgroundColor:en.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
     options:{cutout:'62%',maintainAspectRatio:false,plugins:{legend:{display:false},
       tooltip:{callbacks:{label:c=>' '+c.label+': '+BRL.format(c.parsed)}}}}});
-    leg.innerHTML=en.slice(0,10).map(([id,v])=>{const c=catById(id);
-      return `<div class="li"><span class="dot" style="background:${c.color}"></span>${c.name} · <b class="num">${money(v)}</b></div>`;}).join('');}
+    leg.innerHTML=en.slice(0,10).map(([id,v],i)=>{const c=catById(id);
+      return `<div class="li"><span class="dot" style="background:${CHART_PAL[i%CHART_PAL.length]}"></span>${c.name} · <b class="num">${money(v)}</b></div>`;}).join('');}
   const months=[];for(let i=5;i>=0;i--)months.push(addMonthsYm(curMonth,-i));
   if(trendChart)trendChart.destroy();
   trendChart=new Chart(document.getElementById('trendChart'),{type:'bar',
@@ -1301,15 +1305,16 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
     <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value">
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
 
-    <div class="frow">
-      <div class="field"><label>Forma</label><select class="input" onchange="txDraft.formaId=this.value;txDraft.cartao='';renderTxSheet()">
+    <div class="frow" style="flex-wrap:wrap">
+      <div class="field" style="min-width:140px"><label>Forma</label><select class="input" onchange="txDraft.formaId=this.value;txDraft.cartao='';renderTxSheet()">
         ${DB.formas.map(f=>`<option value="${f.id}" ${t.formaId===f.id?'selected':''}>${f.emoji} ${f.name}</option>`).join('')}</select></div>
-      ${(()=>{const cs=formaCartoes(t.formaId);const noC=NO_CARTAO_IDS.has(t.formaId)||(!cs.length&&DB.formas.find(f=>f.id===t.formaId)&&NO_CARTAO_IDS.has(t.formaId));
+      ${(()=>{const cs=formaCartoes(t.formaId);
         if(NO_CARTAO_IDS.has(t.formaId))return '';
-        if(!cs.length)return `<div class="field"><label>Cartão <button class="link" style="font-size:11px;margin-left:4px" onclick="addCartaoInline('${t.formaId}')">+ Cadastrar</button></label><input class="input" value="" disabled placeholder="Nenhum cartão cadastrado" style="color:var(--muted-2)"></div>`;
-        return `<div class="field"><label>Cartão</label><select class="input" onchange="txDraft.cartao=this.value">
+        if(!cs.length)return `<div class="field" style="min-width:140px"><label>Cartão <button class="link" style="font-size:11px;margin-left:4px" onclick="addCartaoInline('${t.formaId}')">+ Cadastrar</button></label><input class="input" value="" disabled placeholder="Sem cartões" style="color:var(--muted-2)"></div>`;
+        return `<div class="field" style="min-width:140px"><label>Cartão</label><select class="input" onchange="txDraft.cartao=this.value">
           <option value="">Selecionar…</option>
           ${cs.map(c=>`<option value="${c.numero}" ${t.cartao===c.numero?'selected':''}>${esc(c.apelido||c.numero)} ···${(c.numero||'').slice(-4)}</option>`).join('')}</select></div>`;})()}
+    </div>
 
     <div class="field"><label>Descrição</label><input class="input" value="${esc(t.description||'')}" placeholder="ex: Mercado Livre, salário..." oninput="txDraft.description=this.value"></div>
     <div class="field"><label>Observação</label><textarea class="input" placeholder="opcional" oninput="txDraft.note=this.value">${esc(t.note||'')}</textarea></div>
@@ -1445,7 +1450,9 @@ function catSpend(cid,period){let items=M().items.filter(it=>it.categoryId===cid
 function mercShow(){mercSetTab(mercTab);}
 function mercSetTab(t){mercTab=t;['compras','produtos','categorias','mercados'].forEach(x=>{
   document.getElementById('merc-'+x).classList.toggle('hidden',x!==t);
-  document.getElementById('mtab-'+x).classList.toggle('on',x===t);});
+  document.getElementById('mtab-'+x)?.classList.toggle('on',x===t);});
+  // highlight sidebar nav buttons
+  document.querySelectorAll('#navMercado .side-btn').forEach((b,i)=>{const tabs=['compras','produtos','categorias','mercados'];b.classList.toggle('on',tabs[i]===t);});
   if(t==='compras')mercRenderCompras();
   if(t==='produtos')mercRenderProdutos();
   if(t==='categorias')mercRenderCategorias();
@@ -1620,7 +1627,7 @@ function mercDeleteStore(id){const n=storePurchaseCount(id);
 function mercNewPurchase(prefill){prefill=prefill||{};mercStoreReturn=false;
   const now=new Date();const dtLocal=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
   mercDraft={storeId:prefill.storeId||M().stores[0]?.id||null,datetime:prefill.datetime||dtLocal,formaId:DB.formas[0]?.id,
-    items:prefill.items||[],linkFinance:true,chave:prefill.chave||'',source:prefill.source||'manual',cnpj:prefill.cnpj||''};
+    items:prefill.prefillItems&&prefill.items?prefill.items:[],linkFinance:true,chave:prefill.chave||'',source:prefill.source||'manual',cnpj:prefill.cnpj||''};
   mercItemDraft=mercBlankItem();
   mercRenderPurchaseSheet();
   if(prefill.cnpj&&!prefill.storeId)setTimeout(()=>toast('CNPJ '+prefill.cnpj.slice(0,8)+'… não cadastrado. Crie o mercado e selecione.'),300);}
@@ -1724,6 +1731,69 @@ function onScanOk(text){mercStopScan();const chave=extractChave(text);
   const cnpj=chave.substr(6,14);const store=M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===cnpj);
   mercNewPurchase({chave,source:'qrcode',storeId:store?store.id:null,cnpj});
   toast(store?'Mercado identificado pelo CNPJ ✓':'Nota lida — selecione ou cadastre o mercado');}
+/* ---- IMPORTAR PDF (DANFE NFC-e) ---- */
+async function mercImportPDF(file){
+  if(!file)return;
+  toast('Lendo PDF…');
+  try{
+    if(typeof pdfjsLib==='undefined')throw new Error('PDF.js não carregou');
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let lines=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const ct=await page.getTextContent();
+      // sort by vertical position then horizontal
+      const items=[...ct.items].sort((a,b)=>Math.round(b.transform[5]/4)*4-Math.round(a.transform[5]/4)*4||a.transform[4]-b.transform[4]);
+      let lastY=null,line='';
+      items.forEach(it=>{const y=Math.round(it.transform[5]/3)*3;
+        if(lastY!==null&&Math.abs(y-lastY)>3){lines.push(line.trim());line='';}
+        line+=(line?' ':'')+it.str;lastY=y;});
+      if(line.trim())lines.push(line.trim());
+    }
+    const txt=lines.join('\n');
+    parseDanfeNFCe(txt);
+  }catch(e){console.error(e);toast('Erro ao ler PDF: '+(e.message||e));}
+}
+function parseDanfeNFCe(txt){
+  // CNPJ → loja
+  const cnpjM=txt.match(/CNPJ[:\s]*([\d]{2}\.?[\d]{3}\.?[\d]{3}\/?[\d]{4}-?[\d]{2})/i);
+  const cnpj=cnpjM?(cnpjM[1].replace(/\D/g,'')):null;
+  const store=cnpj?M().stores.find(s=>(s.cnpj||'').replace(/\D/g,'')===cnpj):null;
+
+  // data/hora
+  let datetime=new Date().toISOString().slice(0,16);
+  const dtM=txt.match(/Emiss[aã]o[:\s]*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/i);
+  if(dtM)datetime=`${dtM[3]}-${dtM[2]}-${dtM[1]}T${dtM[4]}`;
+
+  // total a pagar
+  const totM=txt.match(/Valor a pagar R\$[:\s]*([\d]+[,.][\d]+)/i);
+  const totalCents=totM?Math.round(parseFloat(totM[1].replace(',','.'))*100):0;
+
+  // chave de acesso
+  const chaveM=txt.match(/(\d{44})/);
+  const chave=chaveM?chaveM[1]:'';
+
+  // itens — padrão NFC-e: linha de produto, depois "Qtde.:X UN: Y Vl. Unit.: Z", depois "Vl. Total", depois valor
+  const items=[];
+  const itemRe=/([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀÜ][^\n]+?)\s*\n[^\n]*Qtde\.:([0-9.,]+)\s+UN:\s+(\w+)\s+Vl\. Unit\.:\s+([0-9.,]+)\s*\nVl\. Total\s*\n([0-9.,]+)/gim;
+  let m;
+  while((m=itemRe.exec(txt))!==null){
+    const name=m[1].replace(/\s*\(Código:[^)]*\)/,'').trim();
+    const qty=parseFloat(m[2].replace(',','.'));
+    const unit=m[3].toUpperCase();
+    const totalItem=Math.round(parseFloat(m[5].replace(',','.'))*100);
+    const unitType=unit==='KG'?'peso':unit==='L'?'volume':'unidade';
+    const canonUnit=unit==='KG'?'kg':unit==='L'?'L':'un';
+    items.push({name,qty,unit:canonUnit,unitType,totalCents:totalItem,categoryId:M().categories[0]?.id||''});
+  }
+
+  // abre nova compra pré-preenchida
+  mercNewPurchase({storeId:store?.id||null,cnpj,datetime,chave,source:'pdf',items,prefillItems:true});
+  toast(items.length?`PDF importado: ${items.length} itens encontrados`:'PDF lido — revise e adicione os itens');
+}
+
 window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScanner.stop().then(()=>{try{window.html5QrScanner.clear();}catch(e){}window.html5QrScanner=null;}).catch(()=>{window.html5QrScanner=null;});}catch(e){window.html5QrScanner=null;}}};
 
 /* ===== BOOT ===== */
