@@ -247,7 +247,7 @@ select.input{appearance:none;-webkit-appearance:none;background-image:url("data:
 .user-av{width:28px;height:28px;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:13px}
 
 /* TABLE (desktop transações) */
-.tbl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.tbl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow-x:auto;overflow-y:hidden;box-shadow:var(--shadow)}
 table.tx-tbl{width:100%;border-collapse:collapse;font-size:13px}
 table.tx-tbl thead th{background:var(--ink);color:#CBE0DD;font-weight:600;font-size:11px;letter-spacing:.03em;text-transform:uppercase;
   padding:11px 12px;text-align:left;position:sticky;top:0}
@@ -267,16 +267,15 @@ td.out{color:var(--saida);font-weight:600}
 .iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--paper);border:1px solid var(--line);font-size:13px}
 /* tabela 2 — colunas dimensionadas */
 table.tx-tbl2{table-layout:fixed}
-table.tx-tbl2 .c-data{width:88px}
-table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:100px}
-table.tx-tbl2 th:nth-child(5){width:78px}
-table.tx-tbl2 th:nth-child(6){width:56px}
-table.tx-tbl2 th:nth-child(7){width:90px}
-table.tx-tbl2 th:nth-child(8){width:76px}
-table.tx-tbl2 th:nth-child(9){width:150px}
+table.tx-tbl2 .c-data{width:98px}
+table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:118px}
+table.tx-tbl2 th:nth-child(5){width:82px}
+table.tx-tbl2 th:nth-child(6){width:52px}
+table.tx-tbl2 th:nth-child(7){width:92px}
+table.tx-tbl2 th:nth-child(8){width:78px}
 table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:0;overflow-wrap:break-word}
-table.tx-tbl2 th:last-child,table.tx-tbl2 td:last-child{width:44px}
-table.tx-tbl2 td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.tx-tbl2 th:last-child,table.tx-tbl2 td:last-child{width:40px}
+table.tx-tbl2 td{white-space:nowrap;overflow:hidden;text-overflow:clip}
 table.tx-tbl2 td.tdesc{white-space:normal}
 
 /* ===== AUTH ===== */
@@ -727,7 +726,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-7'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-8'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -767,6 +766,7 @@ function seedCategories(){
   let o=0; const cats=[];
   SAIDAS.forEach(([n,e],i)=>cats.push({id:slug(n),name:n,emoji:e,color:SCOL[i%SCOL.length],kind:'saida',order:o++}));
   ENTRADAS.forEach(([n,e],i)=>cats.push({id:slug(n),name:n,emoji:e,color:ECOL[i%ECOL.length],kind:'entrada',order:o++}));
+  cats.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:o++,isRefund:true});
   return cats;
 }
 function seedFormas(){return[
@@ -835,6 +835,9 @@ function migrate(){
     DB.version=4;
   }
   DB.categories.forEach((c,i)=>{if(c.order==null)c.order=i;});
+  if(!DB.categories.find(c=>c.id==='cat_reembolso_estorno')){
+    DB.categories.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:DB.categories.length,isRefund:true});
+  }
   DB.cartoes=DB.cartoes||[];
   DB.caixinhas=DB.caixinhas||[];
   DB.transfers=DB.transfers||[];
@@ -855,13 +858,15 @@ const formaById=id=>DB.formas.find(f=>f.id===id);
 const formaCartoes=id=>(DB.cartoes||[]).filter(c=>c.formaId===id);
 const NO_CARTAO_IDS=new Set(['forma_debito','forma_pix','forma_mumbuca','forma_dinheiro']);
 const catById=id=>DB.categories.find(c=>c.id===id)||{name:'Sem categoria',emoji:'❓',color:'#8A9794',kind:'saida'};
+const isRefundCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isRefund);};
 const catsByKind=k=>DB.categories.filter(c=>c.kind===k).sort((a,b)=>(a.order??0)-(b.order??0));
 function formaBalance(id){let b=0;for(const t of DB.transactions){if(t.formaId!==id)continue;b+=t.type==='entrada'?t.amountCents:-t.amountCents;}return b;}
 function totalBalance(){return DB.formas.reduce((s,f)=>s+formaBalance(f.id),0);}
 function balCaixa(){let e=0,s=0;for(const t of DB.transactions){if(t.type==='entrada')e+=t.amountCents;else if(t.regime==='caixa')s+=t.amountCents;}return e-s;}
 function balCompromisso(){let e=0,s=0;for(const t of DB.transactions){if(t.type==='entrada')e+=t.amountCents;else s+=t.amountCents;}return e-s;}
 const monthTx=ym=>DB.transactions.filter(t=>t.date.slice(0,7)===ym);
-const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type).reduce((s,t)=>s+t.amountCents,0);
+const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type&&!(type==='entrada'&&isRefundCat(t.categoryId))).reduce((s,t)=>s+t.amountCents,0);
+function monthRefundSum(ym){return monthTx(ym).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)).reduce((s,t)=>s+t.amountCents,0);}
 function parcelaInfo(ym){
   // Apenas parcelas vindas de meses anteriores (parcela > 1)
   const ps=monthTx(ym).filter(t=>t.parcelado&&t.totalParcelas>1&&t.parcela>1);
@@ -931,10 +936,11 @@ function renderHome(){
   const mOutAll=monthSum(curMonth,'saida');
   const mOutCaixa=monthTx(curMonth).filter(t=>t.type==='saida'&&t.regime==='caixa').reduce((s,t)=>s+t.amountCents,0);
   const mTransfNet=monthTransfersNet(curMonth); // >0 = mais foi guardado do que resgatado no mês
-  const caixa=mIn-mOutCaixa-mTransfNet, comp=mIn-mOutAll;   // referentes ao mês selecionado
+  const mReembolso=monthRefundSum(curMonth); // dinheiro que voltou (reembolso/estorno) — não é renda, mas é caixa real e abate o gasto
+  const caixa=mIn-mOutCaixa-mTransfNet+mReembolso, comp=mIn-mOutAll+mReembolso;   // referentes ao mês selecionado
   setBal('c1Bal',caixa);document.getElementById('c1InV').textContent=money(mIn);document.getElementById('c1OutV').textContent=money(mOutCaixa+mTransfNet);flowBar('c1In','c1Out',mIn,mOutCaixa+mTransfNet);
   setBal('c2Bal',comp);document.getElementById('c2InV').textContent=money(mIn);document.getElementById('c2OutV').textContent=money(mOutAll);flowBar('c2In','c2Out',mIn,mOutAll);
-  const net=mIn-mOutAll, pinf=parcelaInfo(curMonth);
+  const net=mIn-mOutAll+mReembolso, pinf=parcelaInfo(curMonth);
   document.getElementById('homeKpis').innerHTML=`
     <div class="kpi"><div class="k-lab"><span class="dot" style="background:var(--entrada)"></span>Entradas do mês</div><div class="k-val num" style="color:var(--entrada)">${money(mIn)}</div></div>
     <div class="kpi"><div class="k-lab"><span class="dot" style="background:var(--saida)"></span>Saídas do mês</div><div class="k-val num" style="color:var(--saida)">${money(mOutAll)}</div></div>
@@ -1043,11 +1049,12 @@ function txCard(t){
   const c=catById(t.categoryId),f=formaById(t.formaId);
   const sign=t.type==='entrada'?'+':'−';const pc=parcClass(t);
   const ptag=t.parcelado&&t.totalParcelas>1?`<span class="parc-tag">${t.parcela}/${t.totalParcelas}</span>`:'';
+  const isRef=isRefundCat(t.categoryId);
   return `<button class="tx ${pc}" data-id="${t.id}">
     <div class="tx-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
     <div class="tx-mid"><div class="tx-desc">${esc(t.description||c.name)}${ptag}</div>
       <div class="tx-meta">${c.name}${f?' · '+esc(f.name):''}${t.cartao?' · '+esc(t.cartao):''}</div></div>
-    <div class="tx-amt ${t.type==='entrada'?'in':'out'}">${sign} ${money(t.amountCents)}</div></button>`;}
+    <div class="tx-amt ${isRef?'':(t.type==='entrada'?'in':'out')}" style="${isRef?'color:var(--transfer)':''}">${sign} ${money(t.amountCents)}</div></button>`;}
 function txTable(list,isParc){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
   // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente
@@ -1073,12 +1080,13 @@ function txTable(list,isParc){
         <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}
     const c=catById(t.categoryId),f=formaById(t.formaId);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
+    const isRef=isRefundCat(t.categoryId);
     return `<tr class="${pc}" data-id="${t.id}">
       <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
-      <td class="r in td-num">${t.type==='entrada'?money(t.amountCents):''}</td>
+      <td class="r td-num ${isRef?'':'in'}" style="${isRef?'color:var(--transfer);font-weight:600':''}">${t.type==='entrada'?money(t.amountCents):''}</td>
       <td class="r out td-num">${t.type==='saida'?money(t.amountCents):''}</td>
       <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
-      <td style="text-align:center"><span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span></td>
+      <td style="text-align:center">${isRef?'<span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Reembolso</span>':`<span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span>`}</td>
       <td class="td-num" style="text-align:center">${parc}</td>
       <td>${f?esc(f.name):''}</td>
       <td class="td-num" style="text-align:center">${esc(t.cartao||'—')}</td>
