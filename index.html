@@ -266,11 +266,18 @@ td.out{color:var(--saida);font-weight:600}
 .tbl-actions{display:flex;gap:6px}
 .iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--paper);border:1px solid var(--line);font-size:13px}
 /* tabela 2 — colunas dimensionadas */
-table.tx-tbl2{table-layout:auto}
-table.tx-tbl2 .c-data{width:96px}
-table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:110px}
-table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:160px}
+table.tx-tbl2{table-layout:fixed}
+table.tx-tbl2 .c-data{width:88px}
+table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:100px}
+table.tx-tbl2 th:nth-child(5){width:78px}
+table.tx-tbl2 th:nth-child(6){width:56px}
+table.tx-tbl2 th:nth-child(7){width:90px}
+table.tx-tbl2 th:nth-child(8){width:76px}
+table.tx-tbl2 th:nth-child(9){width:150px}
+table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:0;overflow-wrap:break-word}
 table.tx-tbl2 th:last-child,table.tx-tbl2 td:last-child{width:44px}
+table.tx-tbl2 td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.tx-tbl2 td.tdesc{white-space:normal}
 
 /* ===== AUTH ===== */
 #auth{max-width:440px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:32px 24px calc(32px + var(--safe-b))}
@@ -715,7 +722,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-1'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-4'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1057,7 +1064,7 @@ function txTable(list,isParc){
         <td>—</td><td class="td-num" style="text-align:center">—</td>
         <td><span class="catdot" style="background:${cx?cx.color:'#5B7DB1'}"></span>${cx?esc(cx.name):'Caixinha'}</td>
         <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
-        <td class="r"></td></tr>`;}
+        <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}
     const c=catById(t.categoryId),f=formaById(t.formaId);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
     return `<tr class="${pc}" data-id="${t.id}">
@@ -1078,7 +1085,7 @@ function txTable(list,isParc){
     <th>Forma</th><th style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();
   const id=b.dataset.id;
-  if(id.startsWith('transfer_')){const tr=(DB.transfers||[]).find(x=>x.id===id.slice(9));if(tr)caixinhaDetail(tr.caixinhaId);return;}
+  if(id.startsWith('transfer_')){editTransfer(id.slice(9));return;}
   openTx(id);});}
 function dayLabel(iso){const t=todayLocal();if(iso===t)return'Hoje';
   const y=new Date(Date.now()-864e5-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);if(iso===y)return'Ontem';
@@ -2023,25 +2030,46 @@ function caixinhaDetail(id){const c=DB.caixinhas.find(x=>x.id===id);if(!c)return
       const isRend=t.direction==='rendimento';const pos=isRend?t.amountCents>=0:t.direction==='in';
       const icon=isRend?(t.amountCents>=0?'📈':'📉'):(t.direction==='in'?'↓':'↑');
       const label=isRend?(t.amountCents>=0?'Rendimento':'Ajuste (perda)'):lbl[t.direction];
-      return `<div class="row" style="cursor:default">
+      return `<div class="row" ${isRend?'style="cursor:default"':`style="cursor:pointer" onclick="editTransfer('${t.id}')"`}>
       <div class="row-ico" style="background:${pos?'var(--entrada-bg)':'var(--saida-bg)'};color:${pos?'var(--entrada)':'var(--saida)'}">${icon}</div>
       <div class="row-mid"><div class="row-title">${label}</div><div class="row-sub">${fmtDate(t.date)}${t.note?' · '+esc(t.note):''}</div></div>
-      <div class="num" style="font-weight:600;color:${pos?'var(--entrada)':'var(--saida)'}">${pos?'+':'−'} ${money(Math.abs(t.amountCents))}</div></div>`;}).join('')}</div>`
+      <div class="num" style="font-weight:600;color:${pos?'var(--entrada)':'var(--saida)'}">${pos?'+':'−'} ${money(Math.abs(t.amountCents))}</div>
+      ${isRend?'':'<button class="iconbtn">✎</button>'}</div>`;}).join('')}</div>`
       :'<p style="font-size:13px;color:var(--muted)">Nenhuma movimentação ainda.</p>'}`);}
 var transferDraft=null;
 function openTransfer(caixinhaId,direction){const c=DB.caixinhas.find(x=>x.id===caixinhaId);
   transferDraft={caixinhaId,direction,amountCents:0,date:todayLocal(),note:''};
-  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${direction==='in'?'Enviar para':'Resgatar de'} ${c.emoji} ${esc(c.name)}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+  renderTransferSheet(c,false);}
+function editTransfer(id){const t=(DB.transfers||[]).find(x=>x.id===id);if(!t)return;
+  const c=DB.caixinhas.find(x=>x.id===t.caixinhaId);
+  transferDraft={...t};
+  renderTransferSheet(c,true);}
+function renderTransferSheet(c,editing){const d=transferDraft;
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${editing?'Editar transferência':'Transferência'} · ${c?c.emoji+' '+esc(c.name):'—'}</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="seg" style="margin-bottom:16px">
+      <button class="${d.direction==='in'?'on':''}" onclick="transferDraft.direction='in';renderTransferSheet(caixinhaById('${c?c.id:''}'),${editing})">↓ Enviar</button>
+      <button class="${d.direction==='out'?'on':''}" onclick="transferDraft.direction='out';renderTransferSheet(caixinhaById('${c?c.id:''}'),${editing})">↑ Resgatar</button>
+    </div>
     <div class="amount-wrap"><span class="cur">R$</span>
-      <input class="amount-input num" inputmode="numeric" placeholder="0,00" oninput="transferDraft.amountCents=digitsToCents(this.value);this.value=transferDraft.amountCents?plain(transferDraft.amountCents):''"></div>
-    <div class="field"><label>Data</label><input class="input" type="date" value="${transferDraft.date}" onchange="transferDraft.date=this.value"></div>
-    <div class="field"><label>Observação</label><input class="input" placeholder="opcional" oninput="transferDraft.note=this.value"></div>
-    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">${direction==='in'?'Esse valor sai do seu saldo em caixa e passa a ser guardado aqui — não conta como gasto do mês.':'Esse valor volta pro seu saldo em caixa.'}</p>
-    <button class="btn btn-primary" onclick="saveTransfer()">Confirmar</button>`);}
+      <input class="amount-input num" inputmode="numeric" placeholder="0,00" value="${d.amountCents?plain(d.amountCents):''}" oninput="transferDraft.amountCents=digitsToCents(this.value);this.value=transferDraft.amountCents?plain(transferDraft.amountCents):''"></div>
+    <div class="field"><label>Data</label><input class="input" type="date" value="${d.date}" onchange="transferDraft.date=this.value"></div>
+    <div class="field"><label>Observação</label><input class="input" placeholder="opcional" value="${esc(d.note||'')}" oninput="transferDraft.note=this.value"></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">${d.direction==='in'?'Esse valor sai do seu saldo em caixa e passa a ser guardado aqui — não conta como gasto do mês.':'Esse valor volta pro seu saldo em caixa.'}</p>
+    <button class="btn btn-primary" onclick="saveTransfer()">${editing?'Salvar':'Confirmar'}</button>
+    ${editing?`<button class="btn btn-danger" style="margin-top:10px" onclick="deleteTransfer('${d.id}')">Excluir transferência</button>`:''}`);}
+function caixinhaById(id){return DB.caixinhas.find(x=>x.id===id);}
 function saveTransfer(){if(!transferDraft.amountCents)return toast('Informe o valor');
   if(!DB.transfers)DB.transfers=[];
-  DB.transfers.push({id:uid(),...transferDraft,createdAt:Date.now()});
-  save();closeSheet();renderCaixinhas();renderHome();toast(transferDraft.direction==='in'?'Guardado ✓':'Resgatado ✓');}
+  if(transferDraft.id){const i=DB.transfers.findIndex(x=>x.id===transferDraft.id);if(i>=0)DB.transfers[i]={...DB.transfers[i],...transferDraft};}
+  else DB.transfers.push({id:uid(),...transferDraft,createdAt:Date.now()});
+  save();closeSheet();renderCaixinhas();renderHome();
+  if(document.getElementById('scr-tx').classList.contains('active'))renderTx();
+  toast(transferDraft.direction==='in'?'Guardado ✓':'Resgatado ✓');}
+function deleteTransfer(id){if(!confirm('Excluir essa transferência?'))return;
+  DB.transfers=DB.transfers.filter(x=>x.id!==id);
+  save();closeSheet();renderCaixinhas();renderHome();
+  if(document.getElementById('scr-tx').classList.contains('active'))renderTx();
+  toast('Transferência excluída');}
 
 /* rendimento: você informa o saldo atual (extrato do banco/corretora) e o app calcula a diferença sozinho */
 var rendDraft=null;
