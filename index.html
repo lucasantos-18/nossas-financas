@@ -619,6 +619,11 @@ const GOOGLE_CLIENT_ID='699592331307-bfbe1chiof5sjt6nuffc7g01or3k4reu.apps.googl
 const SCOPES='openid email profile https://www.googleapis.com/auth/spreadsheets';
 let tokenClient=null, googleAccessToken=null;
 
+// Proxy de IA (Google Apps Script) pra leitura inteligente de notas fiscais — preencha após publicar o Apps Script
+const MERC_AI_URL='https://script.google.com/macros/s/AKfycbyb5Stlq1xTuERuSa-5nhXJ6QY_o-yh-y0hU5kdaUXLDvubdau7iAruoGw7CiQgl5l0/exec';
+const MERC_AI_SECRET='3159';
+
+
 // Cada "tabela" do app vira uma aba da planilha; cada linha, um registro.
 const TABLES=[
   {name:'Transacoes',cols:['id','type','amountCents','date','regime','parcelado','parcela','totalParcelas','parcelaGroup','formaId','cartao','categoryId','description','note','createdAt'],
@@ -722,7 +727,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-4'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-6'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -941,7 +946,8 @@ function renderHome(){
       <div class="store-logo" style="background:rgba(91,125,177,.14);color:#5B7DB1">🐷</div>
       <div style="flex:1"><div style="font-weight:600">Caixinhas</div><div style="font-size:12px;color:var(--muted)">${DB.caixinhas.length?DB.caixinhas.length+' caixinha(s) · guardado à parte da conta corrente':'Guarde dinheiro à parte, sem misturar com gastos do mês'}</div></div>
       <div class="num" style="font-weight:600">${money(tot)}</div><span class="chev">›</span></button>`;}
-  const recent=monthTx(curMonth).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,8);
+  const recent=[...monthTx(curMonth),...transfersAsTx().filter(t=>t.date.slice(0,7)===curMonth)]
+    .sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,8);
   const box=document.getElementById('homeTx');
   box.innerHTML=recent.length?recent.map(txCard).join(''):emptyHTML('🪙','Tudo começa aqui','Toque em + para registrar o primeiro lançamento.');
   if(recent.length)bindCards(box);
@@ -1842,8 +1848,52 @@ async function mercImportPDF(file){
       });
     }
     lines=lines.filter(l=>l.length);
-    parseDanfeNFCe(lines);
+
+    if(MERC_AI_URL){
+      toast('Lendo com IA…');
+      const ok=await mercImportViaAI(lines);
+      if(ok)return; // IA deu certo, já mostrou a tela de revisão
+      toast('IA indisponível — usando leitor simples');
+    }
+    parseDanfeNFCe(lines); // fallback: parser por regras fixas
   }catch(e){console.error(e);toast('Erro ao ler PDF: '+(e.message||e));}
+}
+async function mercImportViaAI(lines){
+  try{
+    const ctrl=new AbortController();
+    const timeout=setTimeout(()=>ctrl.abort(),25000);
+    const resp=await fetch(MERC_AI_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({secret:MERC_AI_SECRET,text:lines.join('\n')}),signal:ctrl.signal});
+    clearTimeout(timeout);
+    if(!resp.ok)return false;
+    const json=await resp.json();
+    if(json.error){console.error('IA:',json.error);return false;}
+    const d=json.data;if(!d)return false;
+
+    const toCents=v=>v==null?0:Math.round(Number(v)*100);
+    const info={
+      cnpj:(d.cnpj||'').replace(/\D/g,''),
+      storeName:d.storeName||'',
+      address:d.address||'',
+      datetime:d.datetime||todayLocal()+'T00:00',
+      qtdItens:d.qtdItens??(d.items?d.items.length:null),
+      totalCents:toCents(d.totalReais),
+      descontoCents:toCents(d.descontoReais),
+      pagarCents:toCents(d.pagarReais)||toCents(d.totalReais),
+      tributosCents:toCents(d.tributosReais),
+      formaPagamento:d.formaPagamento||'',
+      chave:d.chave||''
+    };
+    const items=(d.items||[]).map(it=>{
+      const unit=(it.unit||'un').toLowerCase();
+      const unitType=unit==='kg'?'peso':unit==='l'?'volume':'unidade';
+      return {name:it.name||'Item',qty:Number(it.qty)||1,unit:unit==='kg'?'kg':unit==='l'?'L':'un',unitType,
+        vUnitCents:toCents(it.vUnitReais),totalCents:toCents(it.totalReais),categoryId:M().categories[0]?.id||''};
+    });
+    if(!items.length&&!info.cnpj){toast('IA não conseguiu ler essa nota');return false;}
+    mercShowImportReview(info,items);
+    return true;
+  }catch(e){console.error('mercImportViaAI',e);return false;}
 }
 function parseDanfeNFCe(lines){
   const txt=lines.join('\n');
