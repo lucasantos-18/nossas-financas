@@ -620,8 +620,8 @@ const SCOPES='openid email profile https://www.googleapis.com/auth/spreadsheets'
 let tokenClient=null, googleAccessToken=null;
 
 // Proxy de IA (Google Apps Script) pra leitura inteligente de notas fiscais — preencha após publicar o Apps Script
-const MERC_AI_URL='https://script.google.com/macros/s/AKfycbyb5Stlq1xTuERuSa-5nhXJ6QY_o-yh-y0hU5kdaUXLDvubdau7iAruoGw7CiQgl5l0/exec';
-const MERC_AI_SECRET='3159';
+const MERC_AI_URL='https://script.google.com/macros/s/AKfycbxC782w8i5eYimVoMUB2nqW6__-bL6x7W7YH1Lye7sEIJCrri4T1GTAuXno8FPDXvD6/exec';
+const MERC_AI_SECRET='31591234';
 
 
 // Cada "tabela" do app vira uma aba da planilha; cada linha, um registro.
@@ -727,7 +727,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-6'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-7'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
