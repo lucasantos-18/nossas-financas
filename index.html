@@ -20,6 +20,7 @@
   --ink:#10302F; --ink-soft:#234B49; --paper:#EAEEED; --paper-2:#E0E6E4;
   --surface:#FFFFFF; --line:#D5DEDC; --muted:#62736F; --muted-2:#8A9794;
   --entrada:#1B8A5A; --entrada-bg:#E4F2EB; --saida:#D5503A; --saida-bg:#FBE7E2;
+  --transfer:#5B7DB1; --transfer-bg:#E7ECF5;
   --amber:#D8982F; --amber-bg:#FAEFD8; --teal:#16615E;
   --parc-end-bg:#CDD6D3; --parc-end-bar:#7C918D;
   --parc-cont-bg:#E8EDEB; --parc-cont-bar:#AEBDB9;
@@ -723,6 +724,8 @@ document.addEventListener('DOMContentLoaded',showAppVersion);
 showAppVersion();
 function ymKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function todayLocal(){const n=new Date();return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+function nowLocalDT(){const n=new Date();return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,16);}
 function slug(s){return 'cat_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 const BRL=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const money=c=>BRL.format((c||0)/100);
@@ -799,7 +802,7 @@ function migrate(){
     DB.transactions=DB.transactions.map(t=>({
       id:t.id||uid(), type:t.type||'saida',
       amountCents:t.amountCents!=null?t.amountCents:Math.round((t.amount||0)*100),
-      date:t.date||new Date().toISOString().slice(0,10),
+      date:t.date||todayLocal(),
       regime:t.regime||'competencia',
       parcelado:!!t.parcelado, parcela:t.parcela||1, totalParcelas:t.totalParcelas||1, parcelaGroup:t.parcelaGroup||null,
       formaId:t.formaId||DB.formas[0]?.id, cartao:t.cartao||'',
@@ -962,6 +965,14 @@ function renderHomeCharts(){
 /* ===== TRANSAÇÕES ===== */
 function toggleScope(){scopeAll=!scopeAll;document.getElementById('scopeToggle').textContent=scopeAll?'Todos os meses':'Mês atual';renderTx();}
 function setTxFilter(v){txFilter=v;renderTx();}
+function transfersAsTx(){
+  return (DB.transfers||[]).filter(t=>t.direction==='in'||t.direction==='out').map(t=>{
+    const cx=DB.caixinhas.find(c=>c.id===t.caixinhaId);
+    return {id:'transfer_'+t.id,isTransfer:true,transferId:t.id,caixinhaId:t.caixinhaId,_caixinha:cx,
+      type:t.direction==='in'?'saida':'entrada',amountCents:t.amountCents,date:t.date,regime:'caixa',
+      parcelado:false,totalParcelas:1,parcela:1,formaId:null,cartao:'',categoryId:null,
+      description:(t.direction==='in'?'Guardado em ':'Resgatado de ')+(cx?cx.name:'caixinha'),
+      note:t.note,createdAt:t.createdAt};});}
 function renderTx(){
   // forma filter options
   const ff=document.getElementById('txFormaFilter');
@@ -974,9 +985,9 @@ function renderTx(){
     if(!scopeAll&&t.date.slice(0,7)!==curMonth)return false;
     if(txFilter!=='all'&&t.type!==txFilter)return false;
     if(formaF&&t.formaId!==formaF)return false;
-    if(q){const c=catById(t.categoryId);if(!((t.description||'').toLowerCase().includes(q)||c.name.toLowerCase().includes(q)))return false;}
+    if(q){const catName=t.isTransfer?'':catById(t.categoryId).name;if(!((t.description||'').toLowerCase().includes(q)||catName.toLowerCase().includes(q)))return false;}
     return true;};
-  let list=DB.transactions.filter(match);
+  let list=[...DB.transactions,...transfersAsTx()].filter(match);
   const box=document.getElementById('txContent');
   if(!list.length){box.innerHTML=emptyHTML('🔍','Nada por aqui',scopeAll?'Nenhum lançamento encontrado.':'Sem lançamentos neste mês. Toque no + para adicionar.');return;}
 
@@ -1009,7 +1020,14 @@ function renderTx(){
   bindCards(box);
 }
 function parcClass(t){if(!(t.parcelado&&t.totalParcelas>1))return'';return t.parcela>=t.totalParcelas?'pe':'pc';}
-function txCard(t){const c=catById(t.categoryId),f=formaById(t.formaId);
+function txCard(t){
+  if(t.isTransfer){const cx=t._caixinha;const sign=t.type==='entrada'?'+':'−';
+    return `<button class="tx" data-id="${t.id}">
+      <div class="tx-ico" style="background:${(cx?cx.color:'#5B7DB1')}22;color:${cx?cx.color:'#5B7DB1'}">${cx?cx.emoji:'🐷'}</div>
+      <div class="tx-mid"><div class="tx-desc">${esc(t.description)}</div>
+        <div class="tx-meta">Caixinha${t.note?' · '+esc(t.note):''}</div></div>
+      <div class="tx-amt" style="color:var(--transfer)">${sign} ${money(t.amountCents)}</div></button>`;}
+  const c=catById(t.categoryId),f=formaById(t.formaId);
   const sign=t.type==='entrada'?'+':'−';const pc=parcClass(t);
   const ptag=t.parcelado&&t.totalParcelas>1?`<span class="parc-tag">${t.parcela}/${t.totalParcelas}</span>`:'';
   return `<button class="tx ${pc}" data-id="${t.id}">
@@ -1027,9 +1045,21 @@ function txTable(list,isParc){
     else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
     else saldoMap[t.id]=null; // competência não movimenta caixa → sem saldo
   });
-  const rows=list.map(t=>{const c=catById(t.categoryId),f=formaById(t.formaId);const pc=parcClass(t);
+  const rows=list.map(t=>{const pc=parcClass(t);const sld=saldoMap[t.id];
+    if(t.isTransfer){const cx=t._caixinha;
+      return `<tr data-id="${t.id}">
+        <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
+        <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='entrada'?money(t.amountCents):''}</td>
+        <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='saida'?money(t.amountCents):''}</td>
+        <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
+        <td style="text-align:center"><span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Caixinha</span></td>
+        <td class="td-num" style="text-align:center">—</td>
+        <td>—</td><td class="td-num" style="text-align:center">—</td>
+        <td><span class="catdot" style="background:${cx?cx.color:'#5B7DB1'}"></span>${cx?esc(cx.name):'Caixinha'}</td>
+        <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
+        <td class="r"></td></tr>`;}
+    const c=catById(t.categoryId),f=formaById(t.formaId);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
-    const sld=saldoMap[t.id];
     return `<tr class="${pc}" data-id="${t.id}">
       <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
       <td class="r in td-num">${t.type==='entrada'?money(t.amountCents):''}</td>
@@ -1046,9 +1076,12 @@ function txTable(list,isParc){
     <th class="c-data" style="text-align:center">Data</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Saldo</th>
     <th style="text-align:center">Regime</th><th style="text-align:center">Parc</th>
     <th>Forma</th><th style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
-function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();openTx(b.dataset.id);});}
-function dayLabel(iso){const t=new Date().toISOString().slice(0,10);if(iso===t)return'Hoje';
-  const y=new Date(Date.now()-864e5).toISOString().slice(0,10);if(iso===y)return'Ontem';
+function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+  const id=b.dataset.id;
+  if(id.startsWith('transfer_')){const tr=(DB.transfers||[]).find(x=>x.id===id.slice(9));if(tr)caixinhaDetail(tr.caixinhaId);return;}
+  openTx(id);});}
+function dayLabel(iso){const t=todayLocal();if(iso===t)return'Hoje';
+  const y=new Date(Date.now()-864e5-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);if(iso===y)return'Ontem';
   return new Date(iso+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'}).replace(/\./g,'');}
 
 /* ===== CHARTS ===== */
@@ -1313,7 +1346,7 @@ function splitEqual(total,count){if(count<=0)return[];const base=Math.floor(tota
   const a=[];for(let i=0;i<count;i++){a.push(base+(rem>0?1:0));if(rem>0)rem--;}return a;}
 function openTx(id){const t=id?DB.transactions.find(x=>x.id===id):null;editingTx=t?t.id:null;
   if(t){txDraft={...t,parcelas:[],_single:!!t.parcelaGroup};}
-  else{txDraft={type:'saida',amountCents:0,date:new Date().toISOString().slice(0,10),regime:'competencia',
+  else{txDraft={type:'saida',amountCents:0,date:todayLocal(),regime:'competencia',
     parcelado:false,parcela:1,totalParcelas:'',formaId:DB.formas[0]?.id,cartao:'',categoryId:null,description:'',note:'',parcelas:[],_single:false};}
   if(!txDraft.categoryId){txDraft.categoryId=catsByKind(txDraft.type)[0]?.id;}
   renderTxSheet();}
@@ -1440,7 +1473,7 @@ function exportCSV(){if(!DB.transactions.length)return toast('Nada para exportar
       formaById(t.formaId)?.name||'',t.cartao||'',catById(t.categoryId).name,t.description||'',t.note||'']);});
   const csv='\uFEFF'+rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download='nossas_financas_'+USER.username+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();toast('CSV exportado ✓');}
+  a.download='nossas_financas_'+USER.username+'_'+todayLocal()+'.csv';a.click();toast('CSV exportado ✓');}
 async function wipe(){if(!confirm('Isso apaga TODOS os seus lançamentos, formas, categorias e orçamentos. Tem certeza?'))return;
   if(!confirm('Última confirmação: apagar tudo mesmo?'))return;DB=seed();
   await saveAll();renderAll();go('home');toast('Dados apagados');}
@@ -1673,7 +1706,7 @@ function mercDeleteStore(id){const n=storePurchaseCount(id);
 
 /* ---- NOVA COMPRA ---- */
 function mercNewPurchase(prefill){prefill=prefill||{};mercStoreReturn=false;
-  const now=new Date();const dtLocal=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const dtLocal=nowLocalDT();
   mercDraft={storeId:prefill.storeId||M().stores[0]?.id||null,datetime:prefill.datetime||dtLocal,formaId:DB.formas[0]?.id,
     items:prefill.prefillItems&&prefill.items?prefill.items:[],linkFinance:true,chave:prefill.chave||'',source:prefill.source||'manual',cnpj:prefill.cnpj||''};
   mercItemDraft=mercBlankItem();
@@ -1748,7 +1781,7 @@ function mercSavePurchase(){const d=mercDraft;
     M().items.push({id:uid(),purchaseId:pid,productId:prod.id,categoryId:prod.categoryId,qty:it.qty,unit:it.unit,canonQty:cq,totalCents:it.totalCents,unitPriceCanonCents:up,createdAt:Date.now()});});
   let txId=null;
   if(d.linkFinance){const catM=DB.categories.find(c=>c.id===slug('MERCADO'))||DB.categories.find(c=>c.kind==='saida');
-    txId=uid();DB.transactions.push({id:txId,type:'saida',amountCents:total,date:(d.datetime||'').slice(0,10)||new Date().toISOString().slice(0,10),
+    txId=uid();DB.transactions.push({id:txId,type:'saida',amountCents:total,date:(d.datetime||'').slice(0,10)||todayLocal(),
       regime:'caixa',parcelado:false,parcela:1,totalParcelas:1,parcelaGroup:null,formaId:d.formaId||DB.formas[0]?.id,cartao:'',
       categoryId:catM?catM.id:null,description:mStore(d.storeId)?.name||'Mercado',note:'Compra de mercado · '+d.items.length+' itens',createdAt:Date.now()});}
   M().purchases.push({id:pid,storeId:d.storeId,datetime:d.datetime,totalCents:total,formaId:d.formaId,chave:d.chave||'',source:d.source||'manual',txId,createdAt:Date.now()});
@@ -1823,7 +1856,7 @@ function parseDanfeNFCe(lines){
   if(cnpjLineIdx>=0&&lines[cnpjLineIdx+1]&&!/Qtde|Vl\./i.test(lines[cnpjLineIdx+1]))address=lines[cnpjLineIdx+1].trim();
 
   // data/hora de emissão
-  let datetime=new Date().toISOString().slice(0,16);
+  let datetime=nowLocalDT();
   const dtM=txt.match(/Emiss[aã]o[:\s]*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2})/i)||txt.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2}:\d{2})/);
   if(dtM)datetime=`${dtM[3]}-${dtM[2]}-${dtM[1]}T${dtM[4].slice(0,5)}`;
 
@@ -1997,7 +2030,7 @@ function caixinhaDetail(id){const c=DB.caixinhas.find(x=>x.id===id);if(!c)return
       :'<p style="font-size:13px;color:var(--muted)">Nenhuma movimentação ainda.</p>'}`);}
 var transferDraft=null;
 function openTransfer(caixinhaId,direction){const c=DB.caixinhas.find(x=>x.id===caixinhaId);
-  transferDraft={caixinhaId,direction,amountCents:0,date:new Date().toISOString().slice(0,10),note:''};
+  transferDraft={caixinhaId,direction,amountCents:0,date:todayLocal(),note:''};
   showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${direction==='in'?'Enviar para':'Resgatar de'} ${c.emoji} ${esc(c.name)}</h2><button class="x" onclick="closeSheet()">✕</button></div>
     <div class="amount-wrap"><span class="cur">R$</span>
       <input class="amount-input num" inputmode="numeric" placeholder="0,00" oninput="transferDraft.amountCents=digitsToCents(this.value);this.value=transferDraft.amountCents?plain(transferDraft.amountCents):''"></div>
@@ -2013,7 +2046,7 @@ function saveTransfer(){if(!transferDraft.amountCents)return toast('Informe o va
 /* rendimento: você informa o saldo atual (extrato do banco/corretora) e o app calcula a diferença sozinho */
 var rendDraft=null;
 function openRendimento(caixinhaId){const c=DB.caixinhas.find(x=>x.id===caixinhaId);const atual=caixinhaSaldo(caixinhaId);
-  rendDraft={caixinhaId,date:new Date().toISOString().slice(0,10),note:''};
+  rendDraft={caixinhaId,date:todayLocal(),note:''};
   showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Atualizar saldo — ${c.emoji} ${esc(c.name)}</h2><button class="x" onclick="closeSheet()">✕</button></div>
     <p style="font-size:12.5px;color:var(--muted);margin:0 2px 14px">Saldo atual registrado aqui: <b class="num">${money(atual)}</b>. Informe o saldo de hoje (olhando o extrato/app do banco) e eu calculo o rendimento sozinho.</p>
     <div class="field"><label>Saldo atual no banco</label>
