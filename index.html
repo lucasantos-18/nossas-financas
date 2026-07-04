@@ -267,16 +267,20 @@ td.out{color:var(--saida);font-weight:600}
 .iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--paper);border:1px solid var(--line);font-size:13px}
 /* tabela 2 — colunas dimensionadas */
 table.tx-tbl2{table-layout:fixed}
+table.tx-tbl2 .td-handle{width:28px}
 table.tx-tbl2 .c-data{width:98px}
-table.tx-tbl2 th:nth-child(2),table.tx-tbl2 th:nth-child(3),table.tx-tbl2 th:nth-child(4){width:118px}
-table.tx-tbl2 th:nth-child(5){width:82px}
-table.tx-tbl2 th:nth-child(6){width:52px}
-table.tx-tbl2 th:nth-child(7){width:92px}
-table.tx-tbl2 th:nth-child(8){width:78px}
+table.tx-tbl2 .c-val{width:118px}
+table.tx-tbl2 .c-regime{width:82px}
+table.tx-tbl2 .c-parc{width:52px}
+table.tx-tbl2 .c-forma{width:92px}
+table.tx-tbl2 .c-cartao{width:78px}
 table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:0;overflow-wrap:break-word}
-table.tx-tbl2 th:last-child,table.tx-tbl2 td:last-child{width:40px}
+table.tx-tbl2 .c-edit{width:40px}
 table.tx-tbl2 td{white-space:nowrap;overflow:hidden;text-overflow:clip}
 table.tx-tbl2 td.tdesc{white-space:normal}
+.td-handle{text-align:center;color:var(--muted-2);cursor:grab;user-select:none}
+.dhandle-tx{font-size:16px;letter-spacing:-1px;padding:4px 2px;display:inline-block;touch-action:none}
+tr.dragging-tx{opacity:.4}
 
 /* ===== AUTH ===== */
 #auth{max-width:440px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:32px 24px calc(32px + var(--safe-b))}
@@ -726,7 +730,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-8'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-9'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -767,6 +771,7 @@ function seedCategories(){
   SAIDAS.forEach(([n,e],i)=>cats.push({id:slug(n),name:n,emoji:e,color:SCOL[i%SCOL.length],kind:'saida',order:o++}));
   ENTRADAS.forEach(([n,e],i)=>cats.push({id:slug(n),name:n,emoji:e,color:ECOL[i%ECOL.length],kind:'entrada',order:o++}));
   cats.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:o++,isRefund:true});
+  cats.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:o++,isCardPayment:true});
   return cats;
 }
 function seedFormas(){return[
@@ -838,6 +843,9 @@ function migrate(){
   if(!DB.categories.find(c=>c.id==='cat_reembolso_estorno')){
     DB.categories.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:DB.categories.length,isRefund:true});
   }
+  if(!DB.categories.find(c=>c.id==='cat_pagamento_fatura')){
+    DB.categories.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:DB.categories.length,isCardPayment:true});
+  }
   DB.cartoes=DB.cartoes||[];
   DB.caixinhas=DB.caixinhas||[];
   DB.transfers=DB.transfers||[];
@@ -859,13 +867,17 @@ const formaCartoes=id=>(DB.cartoes||[]).filter(c=>c.formaId===id);
 const NO_CARTAO_IDS=new Set(['forma_debito','forma_pix','forma_mumbuca','forma_dinheiro']);
 const catById=id=>DB.categories.find(c=>c.id===id)||{name:'Sem categoria',emoji:'❓',color:'#8A9794',kind:'saida'};
 const isRefundCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isRefund);};
+const isCardPaymentCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isCardPayment);};
 const catsByKind=k=>DB.categories.filter(c=>c.kind===k).sort((a,b)=>(a.order??0)-(b.order??0));
 function formaBalance(id){let b=0;for(const t of DB.transactions){if(t.formaId!==id)continue;b+=t.type==='entrada'?t.amountCents:-t.amountCents;}return b;}
 function totalBalance(){return DB.formas.reduce((s,f)=>s+formaBalance(f.id),0);}
 function balCaixa(){let e=0,s=0;for(const t of DB.transactions){if(t.type==='entrada')e+=t.amountCents;else if(t.regime==='caixa')s+=t.amountCents;}return e-s;}
 function balCompromisso(){let e=0,s=0;for(const t of DB.transactions){if(t.type==='entrada')e+=t.amountCents;else s+=t.amountCents;}return e-s;}
 const monthTx=ym=>DB.transactions.filter(t=>t.date.slice(0,7)===ym);
-const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type&&!(type==='entrada'&&isRefundCat(t.categoryId))).reduce((s,t)=>s+t.amountCents,0);
+const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type
+    &&!(type==='entrada'&&isRefundCat(t.categoryId))
+    &&!(type==='saida'&&isCardPaymentCat(t.categoryId))
+  ).reduce((s,t)=>s+t.amountCents,0);
 function monthRefundSum(ym){return monthTx(ym).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)).reduce((s,t)=>s+t.amountCents,0);}
 function parcelaInfo(ym){
   // Apenas parcelas vindas de meses anteriores (parcela > 1)
@@ -972,7 +984,7 @@ function renderHomeCharts(){
       options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+BRL.format(c.parsed.y)}}},
         scales:{x:{grid:{display:false}},y:{grid:{color:'#E0E6E4'},ticks:{callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}}}}});}
   const cEl=document.getElementById('homeCat'),leg=document.getElementById('homeCatLegend');
-  if(cEl){const map={};monthTx(curMonth).filter(t=>t.type==='saida').forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
+  if(cEl){const map={};monthTx(curMonth).filter(t=>t.type==='saida'&&!isCardPaymentCat(t.categoryId)).forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
     const en=Object.entries(map).sort((a,b)=>b[1]-a[1]);
     if(homeCatChart)homeCatChart.destroy();
     if(!en.length){cEl.getContext('2d').clearRect(0,0,cEl.width,cEl.height);if(leg)leg.innerHTML='<span style="color:var(--muted);font-size:12px;padding:8px">Sem saídas neste mês.</span>';}
@@ -991,7 +1003,7 @@ function transfersAsTx(){
       type:t.direction==='in'?'saida':'entrada',amountCents:t.amountCents,date:t.date,regime:'caixa',
       parcelado:false,totalParcelas:1,parcela:1,formaId:null,cartao:'',categoryId:null,
       description:(t.direction==='in'?'Guardado em ':'Resgatado de ')+(cx?cx.name:'caixinha'),
-      note:t.note,createdAt:t.createdAt};});}
+      note:t.note,createdAt:t.createdAt,sortIndex:t.sortIndex??t.createdAt};});}
 function renderTx(){
   // forma filter options
   const ff=document.getElementById('txFormaFilter');
@@ -1014,7 +1026,7 @@ function renderTx(){
     const pinf=parcelaInfo(curMonth);
     const parc=pinf.ps.filter(match);
     // normais = não parcelado OU primeira parcela (começa este mês, trata como normal)
-    const normais=list.filter(t=>!(t.parcelado&&t.totalParcelas>1&&t.parcela>1)).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    const normais=list.filter(t=>!(t.parcelado&&t.totalParcelas>1&&t.parcela>1)).sort((a,b)=>b.date.localeCompare(a.date)||((b.sortIndex??b.createdAt)-(a.sortIndex??a.createdAt)));
     let html='';
     if(pinf.ps.length){
       html+=`<div class="psum">
@@ -1033,10 +1045,13 @@ function renderTx(){
     }
     box.innerHTML=html;
   }else{
-    list.sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    list.sort((a,b)=>b.date.localeCompare(a.date)||((b.sortIndex??b.createdAt)-(a.sortIndex??a.createdAt)));
     box.innerHTML=isDesktop()?txTable(list,false):list.map(txCard).join('');
   }
   bindCards(box);
+  initDragTxOnce();
+  const sortableTbl=box.querySelector('table.sortable-tx tbody');
+  if(sortableTbl)makeSortableTx(sortableTbl);
 }
 function parcClass(t){if(!(t.parcelado&&t.totalParcelas>1))return'';return t.parcela>=t.totalParcelas?'pe':'pc';}
 function txCard(t){
@@ -1058,7 +1073,7 @@ function txCard(t){
 function txTable(list,isParc){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
   // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente
-  const chrono=[...list].sort((a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt);
+  const chrono=[...list].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
   const saldoMap={};let run=0;
   chrono.forEach(t=>{
     if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
@@ -1066,8 +1081,10 @@ function txTable(list,isParc){
     else saldoMap[t.id]=null; // competência não movimenta caixa → sem saldo
   });
   const rows=list.map(t=>{const pc=parcClass(t);const sld=saldoMap[t.id];
+    const handle=isParc?'':`<td class="td-handle"><span class="dhandle-tx" title="Arrastar para reordenar">⠿</span></td>`;
     if(t.isTransfer){const cx=t._caixinha;
-      return `<tr data-id="${t.id}">
+      return `<tr data-id="${t.id}" ${isParc?'':`data-tid="${t.id}"`}>
+        ${handle}
         <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
         <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='entrada'?money(t.amountCents):''}</td>
         <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='saida'?money(t.amountCents):''}</td>
@@ -1081,7 +1098,8 @@ function txTable(list,isParc){
     const c=catById(t.categoryId),f=formaById(t.formaId);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
     const isRef=isRefundCat(t.categoryId);
-    return `<tr class="${pc}" data-id="${t.id}">
+    return `<tr class="${pc}" data-id="${t.id}" ${isParc?'':`data-tid="${t.id}"`}>
+      ${handle}
       <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
       <td class="r td-num ${isRef?'':'in'}" style="${isRef?'color:var(--transfer);font-weight:600':''}">${t.type==='entrada'?money(t.amountCents):''}</td>
       <td class="r out td-num">${t.type==='saida'?money(t.amountCents):''}</td>
@@ -1093,11 +1111,14 @@ function txTable(list,isParc){
       <td><span class="catdot" style="background:${c.color}"></span>${c.name}</td>
       <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
       <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}).join('');
-  return `<div class="tbl-wrap"><table class="tx-tbl tx-tbl2"><thead><tr>
-    <th class="c-data" style="text-align:center">Data</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Saldo</th>
-    <th style="text-align:center">Regime</th><th style="text-align:center">Parc</th>
-    <th>Forma</th><th style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+  const handleTh=isParc?'':'<th class="td-handle"></th>';
+  return `<div class="tbl-wrap"><table class="tx-tbl tx-tbl2 ${isParc?'':'sortable-tx'}"><thead><tr>
+    ${handleTh}
+    <th class="c-data" style="text-align:center">Data</th><th class="r c-val">Entrada</th><th class="r c-val">Saída</th><th class="r c-val">Saldo</th>
+    <th class="c-regime" style="text-align:center">Regime</th><th class="c-parc" style="text-align:center">Parc</th>
+    <th class="c-forma">Forma</th><th class="c-cartao" style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th class="c-edit"></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+  if(window.__txDragJustHappened)return;
   const id=b.dataset.id;
   if(id.startsWith('transfer_')){editTransfer(id.slice(9));return;}
   openTx(id);});}
@@ -1113,7 +1134,7 @@ function renderCharts(){
   document.getElementById('kIn').textContent=money(inc);document.getElementById('kOut').textContent=money(out);
   const kn=document.getElementById('kNet');kn.textContent=money(net);kn.style.color=net>=0?'var(--entrada)':'var(--saida)';
   document.getElementById('kRate').textContent=(inc>0?Math.round(net/inc*100):0)+'%';
-  const map={};monthTx(curMonth).filter(t=>t.type==='saida').forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
+  const map={};monthTx(curMonth).filter(t=>t.type==='saida'&&!isCardPaymentCat(t.categoryId)).forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
   const en=Object.entries(map).sort((a,b)=>b[1]-a[1]);
   if(catChart)catChart.destroy();const leg=document.getElementById('catLegend');
   if(!en.length){leg.innerHTML='<span style="color:var(--muted);font-size:12px;padding:10px">Sem saídas neste mês.</span>';
@@ -1304,6 +1325,34 @@ function persistOrder(container){
   const kind=container.dataset.kind;const offset=kind==='saida'?0:1000;
   ids.forEach((id,i)=>{const c=DB.categories.find(x=>x.id===id);if(c)c.order=offset+i;});
   save();
+}
+
+/* ---- arrastar pra reordenar LANÇAMENTOS (afeta a coluna Saldo quando é regime caixa) ---- */
+let DRAG_TX={el:null,container:null};
+function initDragTxOnce(){if(window.__dragTxInit)return;window.__dragTxInit=true;
+  const afterEl=(c,y)=>{const els=[...c.querySelectorAll('[data-tid]:not(.dragging-tx)')];let best={o:-Infinity,el:null};
+    for(const el of els){const b=el.getBoundingClientRect();const off=y-b.top-b.height/2;if(off<0&&off>best.o)best={o:off,el};}return best.el;};
+  document.addEventListener('pointermove',e=>{if(!DRAG_TX.el)return;e.preventDefault();
+    const after=afterEl(DRAG_TX.container,e.clientY);
+    if(after==null)DRAG_TX.container.appendChild(DRAG_TX.el);else DRAG_TX.container.insertBefore(DRAG_TX.el,after);},{passive:false});
+  const end=()=>{if(!DRAG_TX.el)return;DRAG_TX.el.classList.remove('dragging-tx');const c=DRAG_TX.container;DRAG_TX.el=null;DRAG_TX.container=null;
+    window.__txDragJustHappened=true;setTimeout(()=>window.__txDragJustHappened=false,50);
+    persistTxOrder(c);};
+  document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);}
+function makeSortableTx(container){
+  container.querySelectorAll('.dhandle-tx').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{e.preventDefault();DRAG_TX.el=h.closest('[data-tid]');DRAG_TX.container=container;DRAG_TX.el.classList.add('dragging-tx');});
+  });
+}
+function persistTxOrder(container){
+  const ids=[...container.querySelectorAll('[data-tid]')].map(x=>x.dataset.tid);
+  const n=ids.length;
+  ids.forEach((id,i)=>{
+    const idx=(n-i)*1000; // topo da lista = maior índice (mais "recente" na exibição)
+    if(id.startsWith('transfer_')){const t=(DB.transfers||[]).find(x=>x.id===id.slice(9));if(t)t.sortIndex=idx;}
+    else{const t=DB.transactions.find(x=>x.id===id);if(t)t.sortIndex=idx;}
+  });
+  save();renderTx();
 }
 var catDraft=null;
 function openCategory(id){const c=id?catById(id):null;
