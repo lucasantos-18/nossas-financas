@@ -658,7 +658,7 @@ const TABLES=[
   {name:'Cartoes',cols:['id','formaId','numero','apelido'],get:()=>DB.cartoes||[],set:r=>DB.cartoes=r},
   {name:'Caixinhas',cols:['id','name','subtitle','emoji','color','createdAt'],num:['createdAt'],get:()=>DB.caixinhas||[],set:r=>DB.caixinhas=r},
   {name:'Transferencias',cols:['id','caixinhaId','amountCents','direction','date','note','createdAt'],num:['amountCents','createdAt'],get:()=>DB.transfers||[],set:r=>DB.transfers=r},
-  {name:'Categorias',cols:['id','name','emoji','color','kind','order'],num:['order'],get:()=>DB.categories,set:r=>DB.categories=r},
+  {name:'Categorias',cols:['id','name','emoji','color','kind','order','isRefund','isCardPayment'],num:['order'],bool:['isRefund','isCardPayment'],get:()=>DB.categories,set:r=>DB.categories=r},
   {name:'Metas',cols:['id','name','emoji','color','targetCents','savedCents'],num:['targetCents','savedCents'],get:()=>DB.goals,set:r=>DB.goals=r},
   {name:'Orcamentos',cols:['month','categoryId','cents'],num:['cents'],
    get:()=>{const o=[];Object.entries(DB.budgets||{}).forEach(([m,obj])=>Object.entries(obj).forEach(([c,v])=>o.push({month:m,categoryId:c,cents:v})));return o;},
@@ -705,6 +705,17 @@ async function ensureSheets(){
       body:JSON.stringify({requests:add.map(t=>({addSheet:{properties:{title:t.name}}}))})});
     await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({valueInputOption:'RAW',data:add.map(t=>({range:`'${t.name}'!A1`,values:[t.cols]}))})});
+  }
+  // garante que abas já existentes tenham o cabeçalho atualizado (caso a gente tenha adicionado colunas novas depois)
+  const existing=TABLES.filter(t=>have.has(t.name));
+  if(existing.length){
+    const hdrResp=await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?`+existing.map(t=>'ranges='+encodeURIComponent(`'${t.name}'!A1:Z1`)).join('&'));
+    if(hdrResp.ok){const hdrData=await hdrResp.json();const vr=hdrData.valueRanges||[];
+      const fix=[];
+      existing.forEach((t,i)=>{const cur=(vr[i]&&vr[i].values&&vr[i].values[0])||[];
+        if(cur.length<t.cols.length)fix.push({range:`'${t.name}'!A1`,values:[t.cols]});});
+      if(fix.length)await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({valueInputOption:'RAW',data:fix})});}
   }
 }
 async function loadAll(){
@@ -753,7 +764,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-13'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-14'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -863,12 +874,12 @@ function migrate(){
     DB.version=4;
   }
   DB.categories.forEach((c,i)=>{if(c.order==null)c.order=i;});
-  if(!DB.categories.find(c=>c.id==='cat_reembolso_estorno')){
-    DB.categories.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:DB.categories.length,isRefund:true});
-  }
-  if(!DB.categories.find(c=>c.id==='cat_pagamento_fatura')){
-    DB.categories.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:DB.categories.length,isCardPayment:true});
-  }
+  const refundCat=DB.categories.find(c=>c.id==='cat_reembolso_estorno');
+  if(!refundCat){DB.categories.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:DB.categories.length,isRefund:true});}
+  else if(!refundCat.isRefund){refundCat.isRefund=true;} // corrige categoria que perdeu a marca por um bug antigo de persistência
+  const cardPayCat=DB.categories.find(c=>c.id==='cat_pagamento_fatura');
+  if(!cardPayCat){DB.categories.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:DB.categories.length,isCardPayment:true});}
+  else if(!cardPayCat.isCardPayment){cardPayCat.isCardPayment=true;} // idem
   DB.cartoes=DB.cartoes||[];
   DB.caixinhas=DB.caixinhas||[];
   DB.transfers=DB.transfers||[];
