@@ -361,6 +361,9 @@ tr.dragging-tx{opacity:.4}
 .seg-sm button{padding:7px 13px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--muted)}
 .seg-sm button.on{background:var(--surface);box-shadow:var(--shadow);color:var(--ink)}
 .imp-tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:480px}
+.matrix-tbl{min-width:640px}
+.matrix-tbl tfoot td{background:var(--paper-2);border-top:2px solid var(--line);padding:9px 10px}
+.matrix-tbl td:first-child,.matrix-tbl th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
 .imp-tbl thead th{background:var(--ink);color:#CBE0DD;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;padding:9px 10px;text-align:left;white-space:nowrap}
 .imp-tbl th.r{text-align:right}
 .imp-tbl tbody td{padding:9px 10px;border-top:1px solid var(--line);white-space:nowrap}
@@ -538,6 +541,11 @@ tr.dragging-tx{opacity:.4}
         <option value="">Selecione uma categoria…</option>
       </select>
       <div id="catDrillResult"></div>
+
+      <div class="section-h" style="margin-top:18px"><h2>Comparativo mensal por categoria</h2>
+        <select class="input" id="matrixMonths" onchange="renderCatMatrix()" style="width:auto">
+          <option value="6">Últimos 6 meses</option><option value="12">Últimos 12 meses</option></select></div>
+      <div style="overflow-x:auto"><div id="catMatrix"></div></div>
     </section>
 
     <!-- ORÇAMENTO -->
@@ -764,7 +772,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-14'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-15'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1164,7 +1172,14 @@ function dayLabel(iso){const t=todayLocal();if(iso===t)return'Hoje';
   return new Date(iso+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'}).replace(/\./g,'');}
 
 /* ===== CHARTS ===== */
-let catChart=null,trendChart=null;
+let catChart=null,trendChart=null,catMonthChart=null;
+function caixinhasBalanceAtMonth(ym){ // saldo acumulado das caixinhas até o fim daquele mês
+  return (DB.transfers||[]).filter(t=>t.date.slice(0,7)<=ym).reduce((s,t)=>{
+    if(t.direction==='in')return s+t.amountCents;
+    if(t.direction==='out')return s-t.amountCents;
+    return s+t.amountCents; // rendimento
+  },0);
+}
 function renderCharts(){
   document.getElementById('chMonth').textContent=monthShort(curMonth);
   const inc=monthSum(curMonth,'entrada'),out=monthSum(curMonth,'saida'),net=inc-out;
@@ -1183,16 +1198,19 @@ function renderCharts(){
       tooltip:{callbacks:{label:c=>' '+c.label+': '+BRL.format(c.parsed)}}}}});}
   renderCatFullList(en,out);
   renderCatDrillOptions();
+  renderCatMatrix();
   const months=[];for(let i=5;i>=0;i--)months.push(addMonthsYm(curMonth,-i));
   if(trendChart)trendChart.destroy();
   trendChart=new Chart(document.getElementById('trendChart'),{type:'bar',
     data:{labels:months.map(monthShort),datasets:[
-      {label:'Entradas',data:months.map(m=>monthSum(m,'entrada')/100),backgroundColor:'#1B8A5A',borderRadius:5,maxBarThickness:20},
-      {label:'Saídas',data:months.map(m=>monthSum(m,'saida')/100),backgroundColor:'#D5503A',borderRadius:5,maxBarThickness:20}]},
+      {type:'bar',label:'Entradas',data:months.map(m=>monthSum(m,'entrada')/100),backgroundColor:'#1B8A5A',borderRadius:5,maxBarThickness:20,yAxisID:'y'},
+      {type:'bar',label:'Saídas',data:months.map(m=>monthSum(m,'saida')/100),backgroundColor:'#D5503A',borderRadius:5,maxBarThickness:20,yAxisID:'y'},
+      {type:'line',label:'Guardado (caixinhas)',data:months.map(m=>caixinhasBalanceAtMonth(m)/100),borderColor:'#5B7DB1',backgroundColor:'#5B7DB1',tension:.3,pointRadius:3,pointBackgroundColor:'#5B7DB1',yAxisID:'y1'}]},
     options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},
       tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+BRL.format(c.parsed.y)}}},
       scales:{x:{grid:{display:false},ticks:{font:{size:11}}},
-        y:{grid:{color:'#E0E6E4'},ticks:{font:{size:10},callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}}}}});
+        y:{position:'left',grid:{color:'#E0E6E4'},ticks:{font:{size:10},callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}},
+        y1:{position:'right',grid:{display:false},ticks:{font:{size:10},color:'#5B7DB1',callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}}}}});
 }
 function renderCatFullList(en,total){
   const box=document.getElementById('catFullList');if(!box)return;
@@ -1203,6 +1221,29 @@ function renderCatFullList(en,total){
       <div class="row-mid"><div class="row-title">${c.name}</div><div class="row-sub">${pct}% do total</div></div>
       <div class="num" style="font-weight:600">${money(v)}</div></button>`;}).join('');
 }
+function renderCatMatrix(){
+  const box=document.getElementById('catMatrix');if(!box)return;
+  const nSel=document.getElementById('matrixMonths');const n=nSel?parseInt(nSel.value):6;
+  const months=[];for(let i=n-1;i>=0;i--)months.push(addMonthsYm(curMonth,-i));
+  const cats=DB.categories.filter(c=>c.kind==='saida'&&!c.isCardPayment).sort((a,b)=>(a.order??0)-(b.order??0));
+  // soma por categoria e mês, só considerando categorias com pelo menos um valor >0 no período
+  const data=cats.map(c=>{
+    const vals=months.map(m=>DB.transactions.filter(t=>t.type==='saida'&&t.categoryId===c.id&&t.date.slice(0,7)===m).reduce((s,t)=>s+t.amountCents,0));
+    return {c,vals,total:vals.reduce((s,v)=>s+v,0)};
+  }).filter(r=>r.total>0).sort((a,b)=>b.total-a.total);
+  if(!data.length){box.innerHTML='<p style="color:var(--muted);font-size:12.5px;padding:12px">Sem dados nesse período.</p>';return;}
+  const monthTotals=months.map((m,i)=>data.reduce((s,r)=>s+r.vals[i],0));
+  const grandTotal=monthTotals.reduce((s,v)=>s+v,0);
+  box.innerHTML=`<table class="imp-tbl matrix-tbl"><thead><tr>
+      <th style="text-align:left">Categoria</th>${months.map(m=>`<th class="r">${monthShort(m)}</th>`).join('')}<th class="r">Total</th></tr></thead>
+    <tbody>${data.map(r=>`<tr><td style="white-space:nowrap"><span class="catdot" style="background:${r.c.color}"></span>${r.c.emoji} ${r.c.name}</td>
+      ${r.vals.map(v=>`<td class="r num" style="${v?'':'color:var(--muted-2)'}">${v?money(v):'—'}</td>`).join('')}
+      <td class="r num" style="font-weight:600">${money(r.total)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr style="font-weight:600;border-top:2px solid var(--line)"><td>Total</td>
+      ${monthTotals.map(v=>`<td class="r num">${money(v)}</td>`).join('')}<td class="r num">${money(grandTotal)}</td></tr></tfoot>
+    </table>`;
+}
+
 function renderCatDrillOptions(){
   const sel=document.getElementById('catDrillSelect');if(!sel)return;
   const cur=sel.value;
@@ -1217,16 +1258,30 @@ function renderCatDrill(catId){
   const c=catById(catId);
   const list=monthTx(curMonth).filter(t=>t.type==='saida'&&t.categoryId===catId).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
   const sum=list.reduce((s,t)=>s+t.amountCents,0);
-  if(!list.length){box.innerHTML=`<p style="color:var(--muted);font-size:12.5px;padding:4px 2px">Nenhum gasto em ${c.name} neste mês.</p>`;return;}
+  const months=[];for(let i=5;i>=0;i--)months.push(addMonthsYm(curMonth,-i));
+  const histVals=months.map(m=>DB.transactions.filter(t=>t.type==='saida'&&t.categoryId===catId&&t.date.slice(0,7)===m).reduce((s,t)=>s+t.amountCents,0));
+  const histHTML=`<div class="card" style="padding:8px 4px;margin-bottom:14px"><div class="chart-box" style="height:180px"><canvas id="catDrillChart"></canvas></div></div>`;
+  if(!list.length){box.innerHTML=`<p style="color:var(--muted);font-size:12.5px;padding:4px 2px 12px">Nenhum gasto em ${c.name} neste mês.</p>`+histHTML;
+    renderCatDrillChart(months,histVals,c);return;}
   box.innerHTML=`<div class="card" style="padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
       <div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
-      <div style="flex:1"><div style="font-weight:600">${c.name}</div><div style="font-size:11.5px;color:var(--muted)">${list.length} lançamento(s)</div></div>
+      <div style="flex:1"><div style="font-weight:600">${c.name}</div><div style="font-size:11.5px;color:var(--muted)">${list.length} lançamento(s) neste mês</div></div>
       <div class="num" style="font-family:var(--display);font-weight:600;font-size:18px">${money(sum)}</div></div>
+    ${histHTML}
     <div class="row-list">${list.map(t=>{const f=formaById(t.formaId);
       return `<div class="row" style="cursor:default"><div class="row-mid">
         <div class="row-title">${esc(t.description||c.name)}</div>
         <div class="row-sub">${fmtDate(t.date)}${f?' · '+esc(f.name):''}${t.parcelado&&t.totalParcelas>1?' · '+t.parcela+'/'+t.totalParcelas:''}</div></div>
         <div class="num" style="font-weight:600">${money(t.amountCents)}</div></div>`;}).join('')}</div>`;
+  renderCatDrillChart(months,histVals,c);
+}
+function renderCatDrillChart(months,vals,c){
+  if(catMonthChart)catMonthChart.destroy();
+  const cv=document.getElementById('catDrillChart');if(!cv)return;
+  catMonthChart=new Chart(cv,{type:'bar',
+    data:{labels:months.map(monthShort),datasets:[{label:c.name,data:vals.map(v=>v/100),backgroundColor:c.color,borderRadius:5,maxBarThickness:26}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>' '+BRL.format(cx.parsed.y)}}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{grid:{color:'#E0E6E4'},ticks:{font:{size:10},callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}}}}});
 }
 
 /* ===== ORÇAMENTO ===== */
