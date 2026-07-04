@@ -511,6 +511,8 @@ tr.dragging-tx{opacity:.4}
       <div class="frow" style="margin-bottom:10px">
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('faturaCsvInput').click()">📄 Importar fatura (CSV)</button>
         <input type="file" id="faturaCsvInput" accept=".csv" class="hidden" onchange="faturaImportCSV(this.files[0]);this.value=''">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('faturaCleanInput').click()">🧾 Importar CSV já limpo</button>
+        <input type="file" id="faturaCleanInput" accept=".csv" class="hidden" onchange="faturaImportClean(this.files[0]);this.value=''">
       </div>
       <div class="chips" id="txFilters" style="margin-bottom:10px"></div>
       <div id="txContent"></div>
@@ -735,7 +737,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-10'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-11'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -2102,6 +2104,94 @@ function extractParcelaTag(title){ // "Nome - Parcela 4/10" → {clean:"Nome", p
   if(!m)return {clean:title.trim(),parcela:null,total:null};
   return {clean:m[1].trim(),parcela:parseInt(m[2]),total:parseInt(m[3])};
 }
+/* ---- Importar CSV já limpo/revisado (sem IA) — formato: date,name,amount,type,category,parcela,total_parcelas,include,original ---- */
+function faturaCategoryLookup(catText){
+  const t=(catText||'').trim().toUpperCase();
+  if(t==='REEMBOLSO/ESTORNO'||t==='REEMBOLSO'||t==='ESTORNO')return 'cat_reembolso_estorno';
+  if(t==='PAGAMENTO DE FATURA'||t==='PAGAMENTO FATURA')return 'cat_pagamento_fatura';
+  const id=slug(catText||'');
+  return DB.categories.find(c=>c.id===id)?id:null;
+}
+function faturaImportClean(file){
+  if(!file)return;
+  if(typeof Papa==='undefined'){toast('Leitor de CSV não carregou');return;}
+  toast('Lendo CSV…');
+  Papa.parse(file,{header:true,skipEmptyLines:true,encoding:'UTF-8',complete:(res)=>{
+    try{
+      const rows=res.data.filter(r=>r.date&&r.name&&r.amount!=null&&r.amount!=='');
+      if(!rows.length){toast('Nenhuma linha reconhecida nesse CSV');return;}
+      const parsed=rows.map(r=>{
+        const include=(r.include||'sim').trim().toLowerCase();
+        const type=(r.type||'saida').trim().toLowerCase()==='entrada'?'entrada':'saida';
+        const amountCents=Math.round((parseFloat(r.amount)||0)*100);
+        const catId=faturaCategoryLookup(r.category)||DB.categories.find(c=>c.kind===type&&!c.isCardPayment&&!c.isRefund)?.id;
+        const parcela=parseInt(r.parcela)||null, totalParcelas=parseInt(r.total_parcelas)||null;
+        return {id:uid(),name:(r.name||'').trim(),date:(r.date||'').trim(),amountCents,type,categoryId:catId,
+          parcela,totalParcelas,include:include==='sim'||include==='true'||include==='1',
+          original:r.original||'',catText:(r.category||'').trim()};
+      });
+      faturaCleanShowReview(parsed);
+    }catch(e){console.error(e);toast('Erro ao processar CSV: '+(e.message||e));}
+  },error:(err)=>{console.error(err);toast('Erro ao ler o arquivo CSV');}});
+}
+var faturaCleanDraft=null;
+function faturaCleanShowReview(parsed){
+  faturaCleanDraft=parsed.map(p=>({...p,formaId:DB.formas[0]?.id}));
+  const forms=DB.formas.map(f=>`<option value="${f.id}">${f.emoji} ${f.name}</option>`).join('');
+  const semCategoria=faturaCleanDraft.filter(p=>!p.categoryId).length;
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Importar CSV limpo (${faturaCleanDraft.length} itens)</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Forma de pagamento (aplica a todos)</label><select class="input" onchange="faturaCleanDraft.forEach(p=>p.formaId=this.value)">${forms}</select></div>
+    ${semCategoria?`<p style="font-size:12.5px;color:var(--saida);margin:0 2px 10px">⚠️ ${semCategoria} item(ns) sem categoria reconhecida — revise antes de importar.</p>`:''}
+    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">${faturaCleanDraft.filter(p=>p.include).length} marcados pra importar (a coluna "include" do CSV já define isso, mas você pode ajustar).</p>
+    <div id="faturaCleanList"></div>
+    <div class="card" style="padding:14px;margin:14px 0;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;color:var(--muted)">Total selecionado</span><span class="num" id="faturaCleanTotal" style="font-family:var(--display);font-weight:600;font-size:18px"></span></div>
+    <button class="btn btn-primary" onclick="faturaCleanConfirm()">Importar selecionados</button>`);
+  faturaCleanRenderList();
+}
+function faturaCleanRenderList(){const box=document.getElementById('faturaCleanList');if(!box)return;
+  box.innerHTML=faturaCleanDraft.map((p,i)=>{
+    const cats=DB.categories.filter(c=>c.kind===p.type).sort((a,b)=>(a.order??0)-(b.order??0));
+    const parcTag=p.parcela?`<span class="mini-tag">${p.parcela}/${p.totalParcelas}</span>`:'';
+    return `<div class="item-line" style="align-items:flex-start;${p.categoryId?'':'border-color:var(--saida)'}">
+      <input type="checkbox" ${p.include?'checked':''} onchange="faturaCleanDraft[${i}].include=this.checked;faturaCleanUpdateTotal()" style="width:18px;height:18px;margin-top:10px">
+      <div class="il-mid">
+        <input class="input" style="margin-bottom:6px" value="${esc(p.name)}" oninput="faturaCleanDraft[${i}].name=this.value">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select class="input" style="width:auto;flex:1;min-width:150px" onchange="faturaCleanDraft[${i}].categoryId=this.value">
+            <option value="">${p.categoryId?'':'⚠️ escolher categoria'}</option>
+            ${cats.map(c=>`<option value="${c.id}" ${p.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
+          </select>
+          <select class="input" style="width:auto" onchange="faturaCleanDraft[${i}].type=this.value;faturaCleanDraft[${i}].categoryId=null;faturaCleanRenderList()">
+            <option value="saida" ${p.type==='saida'?'selected':''}>Saída</option>
+            <option value="entrada" ${p.type==='entrada'?'selected':''}>Entrada</option>
+          </select>
+          ${parcTag}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${fmtDate(p.date)}${p.original?' · original: "'+esc(p.original)+'"':''}${p.catText&&!p.categoryId?' · categoria não encontrada: "'+esc(p.catText)+'"':''}</div>
+      </div>
+      <div class="num" style="font-weight:600;white-space:nowrap;margin-top:10px">${money(p.amountCents)}</div>
+    </div>`;}).join('');
+  faturaCleanUpdateTotal();
+}
+function faturaCleanUpdateTotal(){const el=document.getElementById('faturaCleanTotal');if(!el)return;
+  const sum=faturaCleanDraft.filter(p=>p.include).reduce((s,p)=>s+p.amountCents,0);el.textContent=money(sum);}
+function faturaCleanConfirm(){
+  const sel=faturaCleanDraft.filter(p=>p.include);
+  if(!sel.length){toast('Nada selecionado');return;}
+  const semCat=sel.filter(p=>!p.categoryId);
+  if(semCat.length){toast(semCat.length+' item(ns) sem categoria — escolha antes de importar');return;}
+  sel.forEach(p=>{
+    DB.transactions.push({id:uid(),type:p.type,amountCents:p.amountCents,date:p.date,
+      regime:p.type==='entrada'?'caixa':'competencia',
+      parcelado:!!p.parcela,parcela:p.parcela||1,totalParcelas:p.totalParcelas||1,parcelaGroup:p.parcela?uid():null,
+      formaId:p.formaId,cartao:'',categoryId:p.categoryId,description:p.name,
+      note:p.original?('Importado da fatura · '+p.original):'Importado da fatura',createdAt:Date.now()});
+  });
+  save();closeSheet();renderAll();toast(sel.length+' lançamento(s) importado(s) ✓');
+}
+
+
 function faturaImportCSV(file){
   if(!file)return;
   if(typeof Papa==='undefined'){toast('Leitor de CSV não carregou');return;}
