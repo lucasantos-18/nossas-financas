@@ -276,7 +276,8 @@ table.tx-tbl2 .c-parc{width:52px}
 table.tx-tbl2 .c-forma{width:92px}
 table.tx-tbl2 .c-cartao{width:78px}
 table.tx-tbl2 td.tdesc{max-width:none;white-space:normal;min-width:0;overflow-wrap:break-word}
-table.tx-tbl2 .c-edit{width:40px}
+table.tx-tbl2 .c-edit{width:56px}
+table.tx-tbl2 td.c-edit,table.tx-tbl2 th.c-edit{padding-left:6px;padding-right:12px}
 table.tx-tbl2 td{white-space:nowrap;overflow:hidden;text-overflow:clip}
 table.tx-tbl2 td.tdesc{white-space:normal}
 .td-handle{text-align:center;color:var(--muted-2);cursor:grab;user-select:none}
@@ -507,6 +508,8 @@ tr.dragging-tx{opacity:.4}
       <div class="frow" style="margin-bottom:10px">
         <input class="input" id="txSearch" placeholder="🔎 Buscar descrição ou categoria" oninput="renderTx()" style="flex:1;min-width:0">
         <select class="input desk-only" id="txFormaFilter" onchange="renderTx()" style="width:180px;flex:none"><option value="">Todas as formas</option></select>
+        <select class="input desk-only" id="txRegimeFilter" onchange="renderTx()" style="width:160px;flex:none">
+          <option value="">Todos os regimes</option><option value="caixa">Caixa</option><option value="competencia">Competência</option></select>
       </div>
       <div class="chips" id="txFilters" style="margin-bottom:10px"></div>
       <div id="txContent"></div>
@@ -750,7 +753,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-12'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-13'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1033,10 +1036,12 @@ function renderTx(){
     .map(([v,l])=>`<button class="chip ${txFilter===v?'on':''}" onclick="setTxFilter('${v}')">${l}</button>`).join('');
   const q=(document.getElementById('txSearch').value||'').toLowerCase();
   const formaF=ff.value;
+  const regimeF=document.getElementById('txRegimeFilter').value;
   const match=t=>{
     if(!scopeAll&&t.date.slice(0,7)!==curMonth)return false;
     if(txFilter!=='all'&&t.type!==txFilter)return false;
     if(formaF&&t.formaId!==formaF)return false;
+    if(regimeF&&t.regime!==regimeF)return false;
     if(q){const catName=t.isTransfer?'':catById(t.categoryId).name;if(!((t.description||'').toLowerCase().includes(q)||catName.toLowerCase().includes(q)))return false;}
     return true;};
   let list=[...DB.transactions,...transfersAsTx()].filter(match);
@@ -1115,7 +1120,7 @@ function txTable(list,isParc){
         <td>—</td><td class="td-num" style="text-align:center">—</td>
         <td><span class="catdot" style="background:${cx?cx.color:'#5B7DB1'}"></span>${cx?esc(cx.name):'Caixinha'}</td>
         <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
-        <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}
+        <td class="r c-edit"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}
     const c=catById(t.categoryId),f=formaById(t.formaId);
     const parc=t.parcelado&&t.totalParcelas>1?`${t.parcela}/${t.totalParcelas}`:'—';
     const isRef=isRefundCat(t.categoryId);
@@ -1131,7 +1136,7 @@ function txTable(list,isParc){
       <td class="td-num" style="text-align:center">${esc(t.cartao||'—')}</td>
       <td><span class="catdot" style="background:${c.color}"></span>${c.name}</td>
       <td class="tdesc" title="${esc(t.description)}">${esc(t.description||'')}</td>
-      <td class="r"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}).join('');
+      <td class="r c-edit"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}).join('');
   const handleTh=isParc?'':'<th class="td-handle"></th>';
   return `<div class="tbl-wrap"><table class="tx-tbl tx-tbl2 ${isParc?'':'sortable-tx'}"><thead><tr>
     ${handleTh}
@@ -1490,12 +1495,13 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
 
     <div class="field"><label>Data ${t.parcelado?'(1ª parcela)':''}</label><input class="input" type="date" value="${t.date}" onchange="txDraft.date=this.value"></div>
 
-    ${t.type==='saida'?`<div class="frow">
+    ${t.type==='saida'||isRefundCat(t.categoryId)?`<div class="frow">
       <div class="field"><label>Regime</label><select class="input" onchange="txDraft.regime=this.value">
         <option value="competencia" ${t.regime==='competencia'?'selected':''}>Competência</option>
-        <option value="caixa" ${t.regime==='caixa'?'selected':''}>Caixa</option></select></div>
-      <div class="field"><label>Parcelado?</label><select class="input" id="txParc" onchange="txDraft.parcelado=this.value==='sim';regenParcelas();renderTxSheet()" ${single?'disabled':''}>
-        <option value="nao" ${!t.parcelado?'selected':''}>Não</option><option value="sim" ${t.parcelado?'selected':''}>Sim</option></select></div>
+        <option value="caixa" ${t.regime==='caixa'?'selected':''}>Caixa</option></select>
+        ${t.type==='entrada'?'<p style="font-size:11px;color:var(--muted);margin:4px 2px 0">Reembolso de fatura de cartão = Competência (não entrou dinheiro). Reembolso por Pix/dinheiro = Caixa.</p>':''}</div>
+      ${t.type==='saida'?`<div class="field"><label>Parcelado?</label><select class="input" id="txParc" onchange="txDraft.parcelado=this.value==='sim';regenParcelas();renderTxSheet()" ${single?'disabled':''}>
+        <option value="nao" ${!t.parcelado?'selected':''}>Não</option><option value="sim" ${t.parcelado?'selected':''}>Sim</option></select></div>`:''}
     </div>`:`<p style="font-size:12px;color:var(--muted);margin:-4px 2px 14px">Entradas entram sempre como regime de <b>caixa</b>.</p>`}
 
     ${t.parcelado&&!single?`
@@ -1507,7 +1513,7 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
         <div id="parcEditor" class="pedit"></div></div>`:''}
     ${(single&&t.parcelaGroup)?`<p style="font-size:12.5px;color:var(--muted);margin:-4px 2px 14px">Parte de um parcelamento (${t.parcela}/${t.totalParcelas}). Ao mudar categoria, forma, descrição etc., você escolhe aplicar só a esta parcela ou a todas.</p>`:''}
 
-    <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value">
+    <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value;renderTxSheet()">
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
 
     <div class="frow" style="flex-wrap:wrap">
