@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
@@ -507,6 +508,10 @@ tr.dragging-tx{opacity:.4}
         <input class="input" id="txSearch" placeholder="🔎 Buscar descrição ou categoria" oninput="renderTx()">
         <select class="input desk-only" id="txFormaFilter" onchange="renderTx()" style="max-width:170px"><option value="">Todas as formas</option></select>
       </div>
+      <div class="frow" style="margin-bottom:10px">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('faturaCsvInput').click()">📄 Importar fatura (CSV)</button>
+        <input type="file" id="faturaCsvInput" accept=".csv" class="hidden" onchange="faturaImportCSV(this.files[0]);this.value=''">
+      </div>
       <div class="chips" id="txFilters" style="margin-bottom:10px"></div>
       <div id="txContent"></div>
     </section>
@@ -730,7 +735,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-9'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-10'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -2080,6 +2085,124 @@ function mercConfirmImport(){if(!mercImportData)return;const{info,items}=mercImp
 }
 
 window.mercStopScan=function(){if(window.html5QrScanner){try{window.html5QrScanner.stop().then(()=>{try{window.html5QrScanner.clear();}catch(e){}window.html5QrScanner=null;}).catch(()=>{window.html5QrScanner=null;});}catch(e){window.html5QrScanner=null;}}};
+
+/* ===== IMPORTAR FATURA (CSV do cartão) ===== */
+var faturaDraft=null;
+function parseBRLNumberToCents(raw){ // aceita "40,00", "- 179,90", "8.202,84", "- 8.202,84"
+  if(raw==null)return {cents:0,neg:false};
+  let s=(''+raw).trim();
+  const neg=/^-/.test(s)||/^\s*-/.test(s);
+  s=s.replace(/^-\s*/,'').trim();
+  s=s.replace(/\./g,'').replace(',','.'); // remove milhar, vírgula vira ponto
+  const v=parseFloat(s)||0;
+  return {cents:Math.round(v*100),neg};
+}
+function extractParcelaTag(title){ // "Nome - Parcela 4/10" → {clean:"Nome", parcela:4, total:10}
+  const m=title.match(/^(.*?)\s*-\s*Parcela\s+(\d+)\/(\d+)\s*$/i);
+  if(!m)return {clean:title.trim(),parcela:null,total:null};
+  return {clean:m[1].trim(),parcela:parseInt(m[2]),total:parseInt(m[3])};
+}
+function faturaImportCSV(file){
+  if(!file)return;
+  if(typeof Papa==='undefined'){toast('Leitor de CSV não carregou');return;}
+  toast('Lendo CSV…');
+  Papa.parse(file,{header:true,skipEmptyLines:true,encoding:'UTF-8',complete:async(res)=>{
+    try{
+      const rows=res.data.filter(r=>r.date&&r.title&&r.amount!=null&&r.amount!=='');
+      if(!rows.length){toast('Nenhuma linha reconhecida nesse CSV');return;}
+      const parsed=rows.map(r=>{
+        const {cents,neg}=parseBRLNumberToCents(r.amount);
+        const {clean,parcela,total}=extractParcelaTag(r.title||'');
+        return {rawTitle:r.title,title:clean,date:(r.date||'').slice(0,10),amountCents:cents,isCredit:neg,parcela,totalParcelas:total};
+      });
+      toast('Interpretando com IA…');
+      const ok=await faturaCallAI(parsed);
+      if(!ok){ // fallback simples sem IA: tudo sem categoria sugerida, você escolhe na revisão
+        parsed.forEach(p=>{p.name=p.title;p.categoryId=null;p.specialType=null;});
+        toast('IA indisponível — revise as categorias manualmente');
+      }
+      faturaShowReview(parsed);
+    }catch(e){console.error(e);toast('Erro ao processar CSV: '+(e.message||e));}
+  },error:(err)=>{console.error(err);toast('Erro ao ler o arquivo CSV');}});
+}
+async function faturaCallAI(parsed){
+  if(!MERC_AI_URL)return false;
+  try{
+    const ctrl=new AbortController();const timeout=setTimeout(()=>ctrl.abort(),25000);
+    const items=parsed.map((p,i)=>({i,title:p.title}));
+    const categories=DB.categories.map(c=>({id:c.id,name:c.name,kind:c.kind}));
+    const resp=await fetch(MERC_AI_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({secret:MERC_AI_SECRET,kind:'fatura',items,categories}),signal:ctrl.signal});
+    clearTimeout(timeout);
+    if(!resp.ok)return false;
+    const json=await resp.json();
+    if(json.error){console.error('IA fatura:',json.error);return false;}
+    const arr=json.data;if(!Array.isArray(arr))return false;
+    arr.forEach(r=>{const p=parsed[r.i];if(!p)return;
+      p.name=r.name||p.title;p.categoryId=DB.categories.find(c=>c.id===r.categoryId)?r.categoryId:null;p.specialType=r.specialType||null;});
+    parsed.forEach(p=>{if(p.name==null){p.name=p.title;p.categoryId=null;p.specialType=null;}}); // qualquer item que a IA não tenha devolvido
+    return true;
+  }catch(e){console.error('faturaCallAI',e);return false;}
+}
+function faturaShowReview(parsed){
+  faturaDraft=parsed.map((p,i)=>{
+    let type,categoryId,include=true;
+    if(p.isCredit&&p.specialType==='pagamento_fatura'){type='saida';categoryId='cat_pagamento_fatura';include=false;}
+    else if(p.isCredit){type='entrada';categoryId='cat_reembolso_estorno';}
+    else{type='saida';categoryId=p.categoryId||DB.categories.find(c=>c.kind==='saida'&&!c.isCardPayment)?.id;}
+    return {id:'f'+i,...p,type,categoryId,include,formaId:DB.formas[0]?.id};
+  });
+  const forms=DB.formas.map(f=>`<option value="${f.id}">${f.emoji} ${f.name}</option>`).join('');
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Revisar fatura (${faturaDraft.length} itens)</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Forma de pagamento (aplica a todos)</label><select class="input" onchange="faturaSetAllForma(this.value)">${forms}</select></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">Confira nome, categoria e se deve importar cada item. Desmarcados não entram. Estornos e reembolsos já vêm marcados como entrada.</p>
+    <div id="faturaList"></div>
+    <div class="card" style="padding:14px;margin:14px 0;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:600;color:var(--muted)">Total selecionado</span><span class="num" id="faturaTotal" style="font-family:var(--display);font-weight:600;font-size:18px"></span></div>
+    <button class="btn btn-primary" onclick="faturaConfirmImport()">Importar selecionados</button>`);
+  faturaRenderList();
+}
+function faturaSetAllForma(fid){faturaDraft.forEach(p=>p.formaId=fid);}
+function faturaRenderList(){const box=document.getElementById('faturaList');if(!box)return;
+  box.innerHTML=faturaDraft.map((p,i)=>{
+    const cats=DB.categories.filter(c=>c.kind===p.type).sort((a,b)=>(a.order??0)-(b.order??0));
+    const tag=p.specialType==='estorno'?'<span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Estorno</span>':
+      p.specialType==='pagamento_fatura'?'<span class="mini-tag" style="background:var(--saida-bg);color:var(--saida)">Pagamento fatura</span>':
+      (p.parcela?`<span class="mini-tag">${p.parcela}/${p.totalParcelas}</span>`:'');
+    return `<div class="item-line" style="align-items:flex-start">
+      <input type="checkbox" ${p.include?'checked':''} onchange="faturaDraft[${i}].include=this.checked;faturaUpdateTotal()" style="width:18px;height:18px;margin-top:10px">
+      <div class="il-mid">
+        <input class="input" style="margin-bottom:6px" value="${esc(p.name)}" oninput="faturaDraft[${i}].name=this.value">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select class="input" style="width:auto;flex:1;min-width:150px" onchange="faturaDraft[${i}].categoryId=this.value">
+            ${cats.map(c=>`<option value="${c.id}" ${p.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
+          </select>
+          <select class="input" style="width:auto" onchange="faturaDraft[${i}].type=this.value;faturaDraft[${i}].categoryId=DB.categories.find(c=>c.kind===this.value)?.id;faturaRenderList()">
+            <option value="saida" ${p.type==='saida'?'selected':''}>Saída</option>
+            <option value="entrada" ${p.type==='entrada'?'selected':''}>Entrada</option>
+          </select>
+          ${tag}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${fmtDate(p.date)} · original: "${esc(p.rawTitle)}"</div>
+      </div>
+      <div class="num" style="font-weight:600;white-space:nowrap;margin-top:10px">${money(p.amountCents)}</div>
+    </div>`;}).join('');
+  faturaUpdateTotal();
+}
+function faturaUpdateTotal(){const el=document.getElementById('faturaTotal');if(!el)return;
+  const sum=faturaDraft.filter(p=>p.include).reduce((s,p)=>s+p.amountCents,0);el.textContent=money(sum);}
+function faturaConfirmImport(){
+  const sel=faturaDraft.filter(p=>p.include);
+  if(!sel.length){toast('Nada selecionado');return;}
+  sel.forEach(p=>{
+    DB.transactions.push({id:uid(),type:p.type,amountCents:p.amountCents,date:p.date,
+      regime:p.type==='entrada'?'caixa':'competencia',
+      parcelado:!!p.parcela,parcela:p.parcela||1,totalParcelas:p.totalParcelas||1,parcelaGroup:p.parcela?uid():null,
+      formaId:p.formaId,cartao:'',categoryId:p.categoryId,description:p.name,
+      note:'Importado da fatura · '+p.rawTitle,createdAt:Date.now()});
+  });
+  save();closeSheet();renderAll();toast(sel.length+' lançamento(s) importado(s) ✓');
+}
 
 /* ===== CAIXINHAS (guardar dinheiro à parte, sem contar como gasto) ===== */
 function caixinhaSaldo(id){return (DB.transfers||[]).filter(t=>t.caixinhaId===id).reduce((s,t)=>{
