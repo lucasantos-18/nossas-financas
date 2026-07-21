@@ -516,11 +516,12 @@ tr.dragging-tx{opacity:.4}
     <section class="screen" id="scr-tx">
       <div class="section-h" style="margin-top:8px"><h2>Lançamentos</h2>
         <button class="link" id="scopeToggle" onclick="toggleScope()">Mês atual</button></div>
-      <div class="frow" style="margin-bottom:10px">
-        <input class="input" id="txSearch" placeholder="🔎 Buscar descrição ou categoria" oninput="renderTx()" style="flex:1;min-width:0">
-        <select class="input desk-only" id="txFormaFilter" onchange="renderTx()" style="width:180px;flex:none"><option value="">Todas as formas</option></select>
-        <select class="input desk-only" id="txRegimeFilter" onchange="renderTx()" style="width:160px;flex:none">
+      <input class="input" id="txSearch" placeholder="🔎 Buscar descrição ou categoria" oninput="renderTx()" style="margin-bottom:10px">
+      <div class="frow" style="margin-bottom:10px;flex-wrap:wrap">
+        <select class="input" id="txFormaFilter" onchange="renderTx()" style="width:160px;flex:none"><option value="">Todas as formas</option></select>
+        <select class="input" id="txRegimeFilter" onchange="renderTx()" style="width:150px;flex:none">
           <option value="">Todos os regimes</option><option value="caixa">Caixa</option><option value="competencia">Competência</option></select>
+        <select class="input" id="txCatFilter" onchange="renderTx()" style="width:170px;flex:none"><option value="">Todas as categorias</option></select>
       </div>
       <div class="chips" id="txFilters" style="margin-bottom:10px"></div>
       <div id="txContent"></div>
@@ -642,7 +643,7 @@ tr.dragging-tx{opacity:.4}
   <div class="nav">
     <div class="nav-inner five" id="navMobFinancas">
       <button class="nav-btn on" data-scr="home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Início</button>
-      <button class="nav-btn" data-scr="tx" onclick="go('tx')"><svg viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3"/></svg>Lançar</button>
+      <button class="nav-btn" data-scr="tx" onclick="go('tx')"><svg viewBox="0 0 24 24"><path d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3-3m-3 3 3 3"/></svg>Lançamentos</button>
       <button class="nav-btn" data-scr="charts" onclick="go('charts')"><svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg>Análise</button>
       <button class="nav-btn" data-scr="budget" onclick="go('budget')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>Orçam.</button>
       <button class="nav-btn" data-scr="config" onclick="go('config')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.3l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.2-1.3L14 2h-4l-.4 2.5a7 7 0 0 0-2.2 1.3l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .9.1 1.3l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2.2 1.3L10 22h4l.4-2.5a7 7 0 0 0 2.2-1.3l2.3 1 2-3.4-2-1.5c.1-.4.1-.9.1-1.3z"/></svg>Ajustes</button>
@@ -787,7 +788,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-17'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-18'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1101,16 +1102,21 @@ function renderTx(){
   // forma filter options
   const ff=document.getElementById('txFormaFilter');
   if(ff.options.length<=1){DB.formas.forEach(f=>{const o=document.createElement('option');o.value=f.id;o.textContent=f.name;ff.appendChild(o);});}
+  // categoria filter options
+  const cf=document.getElementById('txCatFilter');
+  if(cf.options.length<=1){[...DB.categories].sort((a,b)=>(a.order??0)-(b.order??0)).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.emoji+' '+c.name;cf.appendChild(o);});}
   document.getElementById('txFilters').innerHTML=[['all','Tudo'],['entrada','Entradas'],['saida','Saídas']]
     .map(([v,l])=>`<button class="chip ${txFilter===v?'on':''}" onclick="setTxFilter('${v}')">${l}</button>`).join('');
   const q=(document.getElementById('txSearch').value||'').toLowerCase();
   const formaF=ff.value;
   const regimeF=document.getElementById('txRegimeFilter').value;
+  const catF=cf.value;
   const match=t=>{
     if(!scopeAll&&t.date.slice(0,7)!==curMonth)return false;
     if(txFilter!=='all'&&t.type!==txFilter)return false;
     if(formaF&&t.formaId!==formaF)return false;
     if(regimeF&&t.regime!==regimeF)return false;
+    if(catF&&t.categoryId!==catF)return false;
     if(q){const catName=t.isTransfer?'':catById(t.categoryId).name;if(!((t.description||'').toLowerCase().includes(q)||catName.toLowerCase().includes(q)))return false;}
     return true;};
   let list=[...DB.transactions,...transfersAsTx()].filter(match);
