@@ -772,13 +772,33 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-15'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.02-16'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
 }
 document.addEventListener('DOMContentLoaded',showAppVersion);
 showAppVersion();
+
+/* Auto-detecta versão desatualizada (cache de navegador/operadora/CDN) e recarrega sozinho.
+   Busca o próprio HTML sem usar cache nenhum e compara a versão embutida nele com a que
+   está rodando agora — se forem diferentes, força um reload com um link novo, sem cache. */
+(function selfUpdateCheck(){
+  try{
+    if(sessionStorage.getItem('nf_update_checked'))return; // no máx. 1x por sessão, evita loop
+    sessionStorage.setItem('nf_update_checked','1');
+    fetch(location.pathname+'?_cb='+Date.now(),{cache:'no-store'})
+      .then(r=>r.text())
+      .then(html=>{
+        const m=html.match(/APP_VERSION='([^']+)'/);
+        if(m&&m[1]&&m[1]!==APP_VERSION){
+          sessionStorage.removeItem('nf_update_checked');
+          location.replace(location.pathname+'?_cb='+Date.now());
+        }
+      }).catch(()=>{});
+  }catch(e){}
+})();
+
 function ymKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function todayLocal(){const n=new Date();return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,10);}
