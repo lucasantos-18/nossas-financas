@@ -496,6 +496,7 @@ tr.dragging-tx{opacity:.4}
 
       <div class="kpi-grid" id="homeKpis" style="margin-top:14px"></div>
 
+      <div id="homePendentes" style="margin-top:14px"></div>
       <div id="homeCaixinhas" style="margin-top:14px"></div>
 
       <div class="dash-cols">
@@ -780,6 +781,7 @@ async function afterAuth(){
   document.getElementById('app').classList.remove('hidden');
   try{setSync('sync');await ensureSheets();await loadData();initUI();setSync('ok');
     localStorage.setItem('nf_hint',USER.email||'');
+    pendentesFetch().then(renderPendentesCard).catch(()=>{});
   }catch(e){console.error(e);toast('Erro ao acessar a planilha: '+(e.message||e));setSync('err');}
 }
 
@@ -788,7 +790,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.02-18'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.03-19'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1020,7 +1022,7 @@ function go(scr){
   // auto-switch de módulo ao navegar
   if(scr==='mercado'&&curModule!=='mercado')applyModuleUI('mercado');
   if(scr!=='mercado'&&curModule==='mercado')applyModuleUI('financas');
-  if(scr==='home')renderHome();
+  if(scr==='home'){renderHome();renderPendentesCard();pendentesFetch().then(renderPendentesCard).catch(()=>{});}
   if(scr==='mercado'&&window.mercShow)mercShow();
   if(scr==='charts')renderCharts();
   if(scr==='budget')renderBudget();
@@ -2589,6 +2591,109 @@ function saveRendimento(atual){if(rendDraft.novoTotal==null)return toast('Inform
   if(!DB.transfers)DB.transfers=[];
   DB.transfers.push({id:uid(),caixinhaId:rendDraft.caixinhaId,direction:'rendimento',amountCents:diff,date:rendDraft.date,note:rendDraft.note,createdAt:Date.now()});
   save();closeSheet();renderCaixinhas();renderHome();toast(diff>0?'Rendimento registrado ✓':'Ajuste registrado');}
+
+/* ===== PENDENTES (compras capturadas da notificação do banco) =====
+   Essa aba NÃO entra no TABLES/saveAll de propósito: o saveAll limpa e reescreve
+   tudo, e apagaria o que o celular gravou entre um carregamento e outro. */
+const PEND_COLS=['id','createdAt','date','rawText','name','amountCents','categoryId','source'];
+let PENDENTES=[];
+async function pendentesFetch(){
+  if(!googleAccessToken)return [];
+  try{
+    const r=await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'Pendentes'!A2:Z")}`);
+    if(!r.ok){PENDENTES=[];return [];}
+    const d=await r.json();
+    PENDENTES=((d.values)||[]).filter(row=>row&&row[0]).map(row=>{
+      const o={};PEND_COLS.forEach((c,i)=>o[c]=row[i]!=null?row[i]:'');
+      o.amountCents=parseInt(o.amountCents)||0;o.createdAt=parseInt(o.createdAt)||0;
+      return o;});
+    return PENDENTES;
+  }catch(e){console.error('pendentesFetch',e);PENDENTES=[];return [];}
+}
+// remove por id relendo antes de escrever, pra não apagar o que chegou no meio do caminho
+async function pendentesRemove(ids){
+  const set=new Set(ids);
+  const r=await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'Pendentes'!A2:Z")}`);
+  const d=r.ok?await r.json():{};
+  const restantes=((d.values)||[]).filter(row=>row&&row[0]&&!set.has(row[0]));
+  await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'Pendentes'!A2:Z")}:clear`,{method:'POST'});
+  if(restantes.length)await tokenFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'Pendentes'!A2")}?valueInputOption=RAW`,
+    {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:restantes})});
+  await pendentesFetch();
+}
+function renderPendentesCard(){
+  const el=document.getElementById('homePendentes');if(!el)return;
+  const n=PENDENTES.length;
+  if(!n){el.innerHTML='';return;}
+  const tot=PENDENTES.reduce((s,p)=>s+p.amountCents,0);
+  el.innerHTML=`<button class="card" onclick="openPendentes()" style="display:flex;align-items:center;gap:12px;padding:14px;width:100%;text-align:left;border:1px solid var(--amber)">
+    <div class="store-logo" style="background:rgba(212,150,42,.16);color:var(--amber)">📥</div>
+    <div style="flex:1"><div style="font-weight:600">${n} compra${n>1?'s':''} aguardando confirmação</div>
+      <div style="font-size:12px;color:var(--muted)">Capturada${n>1?'s':''} das notificações do banco · toque para revisar</div></div>
+    <div class="num" style="font-weight:600">${money(tot)}</div><span class="chev">›</span></button>`;
+}
+var pendDraft=null;
+function openPendentes(){
+  if(!PENDENTES.length){toast('Nada pendente');return;}
+  pendDraft=PENDENTES.map(p=>({...p,
+    categoryId:DB.categories.find(c=>c.id===p.categoryId)?p.categoryId:null,
+    formaId:DB.formas[0]?.id,regime:'competencia',include:true}));
+  const forms=DB.formas.map(f=>`<option value="${f.id}">${f.emoji} ${f.name}</option>`).join('');
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Compras pendentes (${pendDraft.length})</h2><button class="x" onclick="closeSheet()">✕</button></div>
+    <div class="field"><label>Forma de pagamento (aplica a todas)</label><select class="input" onchange="pendDraft.forEach(p=>p.formaId=this.value)">${forms}</select></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 2px 14px">Valores vieram direto da notificação, sem interpretação. Confira nome e categoria antes de confirmar. O que você desmarcar é descartado.</p>
+    <div id="pendList"></div>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="pendConfirm()">Confirmar selecionadas</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="pendDiscardAll()">Descartar todas</button>`);
+  pendRenderList();
+}
+function pendRenderList(){const box=document.getElementById('pendList');if(!box)return;
+  box.innerHTML=pendDraft.map((p,i)=>{
+    const cats=DB.categories.filter(c=>c.kind==='saida').sort((a,b)=>(a.order??0)-(b.order??0));
+    return `<div class="item-line" style="align-items:flex-start;${p.categoryId?'':'border-color:var(--amber)'}">
+      <input type="checkbox" ${p.include?'checked':''} onchange="pendDraft[${i}].include=this.checked" style="width:18px;height:18px;margin-top:10px">
+      <div class="il-mid">
+        <input class="input" style="margin-bottom:6px" value="${esc(p.name)}" oninput="pendDraft[${i}].name=this.value">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select class="input" style="width:auto;flex:1;min-width:150px" onchange="pendDraft[${i}].categoryId=this.value">
+            <option value="">${p.categoryId?'':'⚠️ escolher categoria'}</option>
+            ${cats.map(c=>`<option value="${c.id}" ${p.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
+          </select>
+          <select class="input" style="width:auto" onchange="pendDraft[${i}].regime=this.value">
+            <option value="competencia" ${p.regime==='competencia'?'selected':''}>Competência</option>
+            <option value="caixa" ${p.regime==='caixa'?'selected':''}>Caixa</option>
+          </select>
+          <input class="input" type="date" style="width:auto" value="${p.date}" onchange="pendDraft[${i}].date=this.value">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">notificação: "${esc(p.rawText||'')}"</div>
+      </div>
+      <div class="num" style="font-weight:600;white-space:nowrap;margin-top:10px">${money(p.amountCents)}</div>
+    </div>`;}).join('');
+}
+async function pendConfirm(){
+  const sel=pendDraft.filter(p=>p.include);
+  if(!sel.length){toast('Nada selecionado');return;}
+  const semCat=sel.filter(p=>!p.categoryId);
+  if(semCat.length){toast(semCat.length+' sem categoria — escolha antes de confirmar');return;}
+  sel.forEach(p=>{
+    DB.transactions.push({id:uid(),type:'saida',amountCents:p.amountCents,date:p.date,regime:p.regime,
+      parcelado:false,parcela:1,totalParcelas:1,parcelaGroup:null,
+      formaId:p.formaId,cartao:'',categoryId:p.categoryId,description:p.name,
+      note:'Da notificação do banco',createdAt:Date.now()});
+  });
+  save();
+  closeSheet();
+  toast('Confirmando…');
+  try{await pendentesRemove(pendDraft.map(p=>p.id));}catch(e){console.error(e);toast('Lançado, mas não consegui limpar a fila');}
+  renderAll();renderPendentesCard();
+  toast(sel.length+' lançamento(s) criado(s) ✓');
+}
+async function pendDiscardAll(){
+  if(!confirm('Descartar todas as compras pendentes? Elas não viram lançamento.'))return;
+  closeSheet();
+  try{await pendentesRemove(pendDraft.map(p=>p.id));toast('Fila esvaziada');}catch(e){toast('Erro ao limpar a fila');}
+  renderPendentesCard();
+}
 
 /* ===== BOOT ===== */
 (async function(){
