@@ -703,7 +703,7 @@ const TABLES=[
   {name:'Caixinhas',cols:['id','name','subtitle','emoji','color','createdAt'],num:['createdAt'],get:()=>DB.caixinhas||[],set:r=>DB.caixinhas=r},
   {name:'Transferencias',cols:['id','caixinhaId','amountCents','direction','date','note','createdAt'],num:['amountCents','createdAt'],get:()=>DB.transfers||[],set:r=>DB.transfers=r},
   {name:'FaturaFechamentos',cols:['id','formaId','date','createdAt'],num:['createdAt'],get:()=>DB.faturaFechamentos||[],set:r=>DB.faturaFechamentos=r},
-  {name:'Categorias',cols:['id','name','emoji','color','kind','order','isRefund','isCardPayment'],num:['order'],bool:['isRefund','isCardPayment'],get:()=>DB.categories,set:r=>DB.categories=r},
+  {name:'Categorias',cols:['id','name','emoji','color','kind','order','isRefund','isCardPayment','isMovimentacao'],num:['order'],bool:['isRefund','isCardPayment','isMovimentacao'],get:()=>DB.categories,set:r=>DB.categories=r},
   {name:'Metas',cols:['id','name','emoji','color','targetCents','savedCents'],num:['targetCents','savedCents'],get:()=>DB.goals,set:r=>DB.goals=r},
   {name:'Orcamentos',cols:['month','categoryId','cents'],num:['cents'],
    get:()=>{const o=[];Object.entries(DB.budgets||{}).forEach(([m,obj])=>Object.entries(obj).forEach(([c,v])=>o.push({month:m,categoryId:c,cents:v})));return o;},
@@ -810,7 +810,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.04-20'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.04-21'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -872,6 +872,8 @@ function seedCategories(){
   ENTRADAS.forEach(([n,e],i)=>cats.push({id:slug(n),name:n,emoji:e,color:ECOL[i%ECOL.length],kind:'entrada',order:o++}));
   cats.push({id:'cat_reembolso_estorno',name:'Reembolso/Estorno',emoji:'↩️',color:'#5B7DB1',kind:'entrada',order:o++,isRefund:true});
   cats.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:o++,isCardPayment:true});
+  cats.push({id:'cat_movimentacao_entrada',name:'Movimentação',emoji:'🔄',color:'#8A9794',kind:'entrada',order:o++,isMovimentacao:true});
+  cats.push({id:'cat_movimentacao_saida',name:'Movimentação',emoji:'🔄',color:'#8A9794',kind:'saida',order:o++,isMovimentacao:true});
   return cats;
 }
 function seedFormas(){return[
@@ -945,7 +947,13 @@ function migrate(){
   else if(!refundCat.isRefund){refundCat.isRefund=true;} // corrige categoria que perdeu a marca por um bug antigo de persistência
   const cardPayCat=DB.categories.find(c=>c.id==='cat_pagamento_fatura');
   if(!cardPayCat){DB.categories.push({id:'cat_pagamento_fatura',name:'Pagamento de Fatura',emoji:'💳',color:'#8A6A4F',kind:'saida',order:DB.categories.length,isCardPayment:true});}
-  else if(!cardPayCat.isCardPayment){cardPayCat.isCardPayment=true;} // idem
+  else if(!cardPayCat.isCardPayment){cardPayCat.isCardPayment=true;}
+  const movEnt=DB.categories.find(c=>c.id==='cat_movimentacao_entrada');
+  if(!movEnt){DB.categories.push({id:'cat_movimentacao_entrada',name:'Movimentação',emoji:'🔄',color:'#8A9794',kind:'entrada',order:DB.categories.length,isMovimentacao:true});}
+  else if(!movEnt.isMovimentacao){movEnt.isMovimentacao=true;}
+  const movSai=DB.categories.find(c=>c.id==='cat_movimentacao_saida');
+  if(!movSai){DB.categories.push({id:'cat_movimentacao_saida',name:'Movimentação',emoji:'🔄',color:'#8A9794',kind:'saida',order:DB.categories.length,isMovimentacao:true});}
+  else if(!movSai.isMovimentacao){movSai.isMovimentacao=true;} // idem
   DB.cartoes=DB.cartoes||[];
   DB.caixinhas=DB.caixinhas||[];
   DB.faturaFechamentos=DB.faturaFechamentos||[];
@@ -969,6 +977,7 @@ const NO_CARTAO_IDS=new Set(['forma_debito','forma_pix','forma_mumbuca','forma_d
 const catById=id=>DB.categories.find(c=>c.id===id)||{name:'Sem categoria',emoji:'❓',color:'#8A9794',kind:'saida'};
 const isRefundCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isRefund);};
 const isCardPaymentCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isCardPayment);};
+const isMovimentacaoCat=id=>{const c=DB.categories.find(x=>x.id===id);return !!(c&&c.isMovimentacao);};
 const catsByKind=k=>DB.categories.filter(c=>c.kind===k).sort((a,b)=>(a.order??0)-(b.order??0));
 function formaBalance(id){let b=0;for(const t of DB.transactions){if(t.formaId!==id)continue;b+=t.type==='entrada'?t.amountCents:-t.amountCents;}return b;}
 function totalBalance(){return DB.formas.reduce((s,f)=>s+formaBalance(f.id),0);}
@@ -1800,7 +1809,7 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
         <div id="parcEditor" class="pedit"></div></div>`:''}
     ${(single&&t.parcelaGroup)?`<p style="font-size:12.5px;color:var(--muted);margin:-4px 2px 14px">Parte de um parcelamento (${t.parcela}/${t.totalParcelas}). Ao mudar categoria, forma, descrição etc., você escolhe aplicar só a esta parcela ou a todas.</p>`:''}
 
-    <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value;renderTxSheet()">
+    <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value;if(isMovimentacaoCat(this.value))txDraft.excludeTotal=true;renderTxSheet()">
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
 
     ${isRefundCat(t.categoryId)?`<div class="field"><label>Abater do gasto de qual categoria?</label><select class="input" onchange="txDraft.refundCategoryId=this.value||null">
@@ -1808,11 +1817,13 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
       ${DB.categories.filter(c=>c.kind==='saida'&&!c.isCardPayment).sort((a,b)=>(a.order??0)-(b.order??0)).map(c=>`<option value="${c.id}" ${t.refundCategoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
       </select><p style="font-size:11px;color:var(--muted);margin:4px 2px 0">Ex: você pagou R$200 de mercado e um amigo te devolveu R$100 — escolhendo Mercado aqui, o gasto real registrado nessa categoria vira R$100.</p></div>`:''}
 
-    <label class="check-row" style="margin:2px 2px 14px">
+    ${isMovimentacaoCat(t.categoryId)?
+      '<p style="font-size:12px;color:var(--muted);margin:0 2px 14px">Categoria Movimentação — some automaticamente de "Entradas/Saídas do mês", mas continua entrando no saldo em caixa e na coluna Saldo dos lançamentos.</p>'
+      :`<label class="check-row" style="margin:2px 2px 14px">
       <input type="checkbox" ${t.excludeTotal?'checked':''} onchange="txDraft.excludeTotal=this.checked">
       <span>Não contar como ${t.type==='entrada'?'entrada':'saída'} (só ajustar o saldo)</span>
     </label>
-    ${t.excludeTotal?'<p style="font-size:11px;color:var(--muted);margin:-10px 2px 14px">Uso típico: remanejamento entre suas próprias contas. Continua entrando no saldo em caixa e na coluna Saldo dos lançamentos, mas some de "Entradas/Saídas do mês".</p>':''}
+    ${t.excludeTotal?'<p style="font-size:11px;color:var(--muted);margin:-10px 2px 14px">Uso típico: remanejamento entre suas próprias contas. Continua entrando no saldo em caixa e na coluna Saldo dos lançamentos, mas some de "Entradas/Saídas do mês".</p>':''}`}
 
     <div class="frow" style="flex-wrap:wrap">
       <div class="field" style="min-width:140px"><label>Forma</label><select class="input" onchange="txDraft.formaId=this.value;txDraft.cartao='';renderTxSheet()">
@@ -1851,7 +1862,7 @@ function saveTx(){const t=txDraft;
   if(!t.formaId)return toast('Crie uma forma de pagamento primeiro');
   const base={type:t.type,date:t.date,regime:t.regime,formaId:t.formaId,cartao:(t.cartao||'').trim(),
     categoryId:t.categoryId,description:t.description||'',note:t.note||'',
-    excludeTotal:!!t.excludeTotal,refundCategoryId:isRefundCat(t.categoryId)?(t.refundCategoryId||null):null};
+    excludeTotal:!!t.excludeTotal||isMovimentacaoCat(t.categoryId),refundCategoryId:isRefundCat(t.categoryId)?(t.refundCategoryId||null):null};
   if(editingTx){const i=DB.transactions.findIndex(x=>x.id===editingTx);const orig=DB.transactions[i];
     const sharedChanged=orig.parcelaGroup&&(orig.categoryId!==base.categoryId||orig.description!==base.description||orig.note!==base.note||orig.formaId!==base.formaId||(orig.cartao||'')!==base.cartao||orig.regime!==base.regime||orig.type!==base.type);
     if(sharedChanged){pendingTxEdit={id:editingTx,base:{...base},amountCents:t.amountCents,group:orig.parcelaGroup,parcela:orig.parcela,total:orig.totalParcelas};askParcelaEditScope();return;}
