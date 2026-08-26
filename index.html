@@ -810,7 +810,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.04-21'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.04-22'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -999,12 +999,19 @@ function saldoCaixaAcumulado(ymFim){
   const ini=DB.settings?.saldoInicialData;
   if(!ini)return null;
   const fim=ymFim+'-32'; // maior que qualquer dia real do mês, garante pegar o mês inteiro
+  return saldoCaixaAntesDe(fim);
+}
+// saldo acumulado considerando TUDO com data < dataLimite (exclusive) — usado tanto pelo card
+// da Início quanto pela coluna Saldo da tabela de Lançamentos, pra sempre partir do mesmo lugar.
+function saldoCaixaAntesDe(dataLimite){
+  const ini=DB.settings?.saldoInicialData;
+  if(!ini)return null;
   let saldo=DB.settings.saldoInicialCents||0;
-  DB.transactions.filter(t=>t.date>=ini&&t.date<fim).forEach(t=>{
+  DB.transactions.filter(t=>t.date>=ini&&t.date<dataLimite).forEach(t=>{
     if(t.type==='entrada')saldo+=t.amountCents;
     else if(t.regime==='caixa')saldo-=t.amountCents;
   });
-  (DB.transfers||[]).filter(tr=>tr.date>=ini&&tr.date<fim).forEach(tr=>{
+  (DB.transfers||[]).filter(tr=>tr.date>=ini&&tr.date<dataLimite).forEach(tr=>{
     if(tr.direction==='in')saldo-=tr.amountCents;
     else if(tr.direction==='out')saldo+=tr.amountCents;
     // rendimento não mexe no caixa da conta corrente
@@ -1338,10 +1345,16 @@ function txCard(t){
     <div class="tx-amt ${isRef?'':(t.type==='entrada'?'in':'out')}" style="${isRef?'color:var(--transfer)':''}">${sign} ${money(t.amountCents)}</div></button>`;}
 function txTable(list,isParc){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
-  // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente
+  // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente,
+  // partindo do saldo inicial configurado em Ajustes (se houver) em vez de sempre zero
   const chrono=[...list].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
-  const saldoMap={};let run=0;
+  const saldoMap={};
+  const anchor=DB.settings?.saldoInicialData;
+  let run=0,usedAnchor=false;
   chrono.forEach(t=>{
+    // no exato momento em que a data cruza a do saldo inicial, o saldo "salta" pro valor
+    // correto (descartando o acúmulo ingênuo de antes, que não tinha como estar certo)
+    if(anchor&&!usedAnchor&&t.date>=anchor){run=saldoCaixaAntesDe(t.date);usedAnchor=true;}
     if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
     else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
     else saldoMap[t.id]=null; // competência não movimenta caixa → sem saldo
