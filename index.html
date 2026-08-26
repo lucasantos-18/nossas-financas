@@ -93,6 +93,9 @@ input,select,textarea{font-family:inherit;font-size:16px;color:var(--ink)}
 .balance-cards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:4px}
 .bcard{background:linear-gradient(155deg,#143F3D,#10302F 60%,#0C2625);border-radius:22px;padding:20px;color:#EAEEED;position:relative;overflow:hidden;box-shadow:0 12px 30px rgba(16,48,47,.24)}
 .bcard.alt{background:linear-gradient(155deg,#1B4B47,#123533 62%,#0D2624)}
+.bcard.purple{background:linear-gradient(155deg,#5A1FA0,#3D1470 60%,#2A0E52)}
+.bcard.purple .bcard-label{color:#D6BCFA}
+.bcard.purple .bcard-sub{color:#B794E6}
 .bcard::after{content:"";position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(216,152,47,.16),transparent 70%)}
 .bcard.alt::after{background:radial-gradient(circle,rgba(242,120,92,.18),transparent 70%)}
 .bcard-label{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:#9DB7B4;font-weight:700}
@@ -494,6 +497,11 @@ tr.dragging-tx{opacity:.4}
               <div class="flow-item" style="text-align:right"><div class="fl-top" style="justify-content:flex-end"><span class="dot" style="background:#F2785C"></span>Gasto total</div><div class="fl-val num" id="c2OutV">R$ 0,00</div></div>
             </div></div>
         </div>
+        <div class="bcard purple hidden" id="cardFaturaNubank" onclick="openFaturaDetail('forma_nubank')" style="cursor:pointer">
+          <div class="bcard-label">Fatura Nubank</div>
+          <div class="bcard-sub" id="faturaNuSub">desde o início</div>
+          <div class="bcard-val num" id="faturaNuVal">R$ 0,00</div>
+        </div>
       </div>
 
       <div class="kpi-grid" id="homeKpis" style="margin-top:14px"></div>
@@ -810,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.05-23'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.05-24'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1003,19 +1011,34 @@ function saldoCaixaAcumulado(ymFim){
 }
 // saldo acumulado considerando TUDO com data < dataLimite (exclusive) — usado tanto pelo card
 // da Início quanto pela coluna Saldo da tabela de Lançamentos, pra sempre partir do mesmo lugar.
+// saldo acumulado considerando TUDO com data < dataLimite (exclusive) — a partir da data-âncora,
+// pra frente (soma o que vier depois) OU pra trás (desfaz o que veio antes), sempre baseado
+// no que estiver realmente lançado. Assim um lançamento anterior à âncora também fica coerente:
+// se você sabe que em 17/08 tinha R$1.440,21 e tem uma entrada real de R$120 em 12/08, o saldo logo
+// após aquele lançamento já mostra o valor certo, sem precisar de todo o histórico antes disso.
 function saldoCaixaAntesDe(dataLimite){
   const ini=DB.settings?.saldoInicialData;
   if(!ini)return null;
   let saldo=DB.settings.saldoInicialCents||0;
-  DB.transactions.filter(t=>t.date>=ini&&t.date<dataLimite).forEach(t=>{
-    if(t.type==='entrada')saldo+=t.amountCents;
-    else if(t.regime==='caixa')saldo-=t.amountCents;
-  });
-  (DB.transfers||[]).filter(tr=>tr.date>=ini&&tr.date<dataLimite).forEach(tr=>{
-    if(tr.direction==='in')saldo-=tr.amountCents;
-    else if(tr.direction==='out')saldo+=tr.amountCents;
-    // rendimento não mexe no caixa da conta corrente
-  });
+  if(dataLimite>=ini){
+    DB.transactions.filter(t=>t.date>=ini&&t.date<dataLimite).forEach(t=>{
+      if(t.type==='entrada')saldo+=t.amountCents;
+      else if(t.regime==='caixa')saldo-=t.amountCents;
+    });
+    (DB.transfers||[]).filter(tr=>tr.date>=ini&&tr.date<dataLimite).forEach(tr=>{
+      if(tr.direction==='in')saldo-=tr.amountCents;
+      else if(tr.direction==='out')saldo+=tr.amountCents;
+    });
+  }else{
+    DB.transactions.filter(t=>t.date>=dataLimite&&t.date<ini).forEach(t=>{
+      if(t.type==='entrada')saldo-=t.amountCents;
+      else if(t.regime==='caixa')saldo+=t.amountCents;
+    });
+    (DB.transfers||[]).filter(tr=>tr.date>=dataLimite&&tr.date<ini).forEach(tr=>{
+      if(tr.direction==='in')saldo+=tr.amountCents;
+      else if(tr.direction==='out')saldo-=tr.amountCents;
+    });
+  }
   return saldo;
 }
 function saveSaldoInicial(){
@@ -1049,15 +1072,15 @@ function faturaFormasComMovimento(){
   return cardFormas().filter(f=>DB.transactions.some(t=>t.formaId===f.id)||(DB.faturaFechamentos||[]).some(x=>x.formaId===f.id));
 }
 function renderFaturaCards(){
-  const box=document.getElementById('homeFaturas');if(!box)return;
-  const formas=faturaFormasComMovimento();
-  if(!formas.length){box.innerHTML='';return;}
-  box.innerHTML=formas.map(f=>{
-    const total=faturaAberta(f.id);const ultimo=faturaUltimoFechamento(f.id);
-    return `<button class="card" onclick="openFaturaDetail('${f.id}')" style="display:flex;align-items:center;gap:12px;padding:14px;width:100%;text-align:left;margin-bottom:10px">
-      <div class="store-logo" style="background:${f.color}22;color:${f.color}">${f.emoji}</div>
-      <div style="flex:1"><div style="font-weight:600">Fatura ${f.name}</div><div style="font-size:12px;color:var(--muted)">${ultimo?'desde '+fmtDate(ultimo):'desde o início'}</div></div>
-      <div class="num" style="font-weight:600;color:${f.color}">${money(total)}</div><span class="chev">›</span></button>`;}).join('');
+  document.getElementById('homeFaturas').innerHTML=''; // esvazia o container antigo — o card agora fica junto dos de saldo
+  const card=document.getElementById('cardFaturaNubank');if(!card)return;
+  const formaId='forma_nubank';
+  const usado=DB.transactions.some(t=>t.formaId===formaId)||(DB.faturaFechamentos||[]).some(x=>x.formaId===formaId);
+  card.classList.toggle('hidden',!usado);
+  if(!usado)return;
+  const total=faturaAberta(formaId);const ultimo=faturaUltimoFechamento(formaId);
+  document.getElementById('faturaNuSub').textContent=ultimo?'desde '+fmtDate(ultimo):'desde o início';
+  document.getElementById('faturaNuVal').textContent=money(total);
 }
 var fechDraft=null;
 function openFechamentoFatura(formaId,editId){
@@ -1211,6 +1234,9 @@ function renderHome(){
   const mIn=monthSum(curMonth,'entrada');
   const mOutAll=monthSum(curMonth,'saida');
   const mOutCaixa=monthTx(curMonth).filter(t=>t.type==='saida'&&t.regime==='caixa').reduce((s,t)=>s+t.amountCents,0);
+  // pro número exibido de "Saídas (caixa)", tira o que for Movimentação/"não contabilizar" — bate com "Saídas do mês".
+  // O saldo em si (mOutCaixa acima) continua completo, porque o dinheiro saiu de verdade da conta.
+  const mOutCaixaShown=monthTx(curMonth).filter(t=>t.type==='saida'&&t.regime==='caixa'&&!t.excludeTotal).reduce((s,t)=>s+t.amountCents,0);
   const mTransfNet=monthTransfersNet(curMonth); // >0 = mais foi guardado do que resgatado no mês
   const mReembolsoCaixa=monthRefundSum(curMonth,true);  // só reembolso que entrou de verdade na conta (Pix, dinheiro) — afeta o caixa
   const mReembolsoTodos=monthRefundSum(curMonth,false); // qualquer reembolso/estorno, inclusive de fatura de cartão — abate o gasto total
@@ -1222,7 +1248,7 @@ function renderHome(){
   const comp=mIn-mOutAll+mReembolsoTodos;   // saldo comprometido é sempre referente ao mês selecionado
   const subEl=document.getElementById('c1Sub');
   if(subEl)subEl.textContent=caixaAcumulado!=null?'saldo acumulado desde '+fmtDate(DB.settings.saldoInicialData):'entradas − saídas à vista, no mês';
-  setBal('c1Bal',caixa);document.getElementById('c1InV').textContent=money(mIn);document.getElementById('c1OutV').textContent=money(mOutCaixa+mTransfNet);flowBar('c1In','c1Out',mIn,mOutCaixa+mTransfNet);
+  setBal('c1Bal',caixa);document.getElementById('c1InV').textContent=money(mIn);document.getElementById('c1OutV').textContent=money(mOutCaixaShown+mTransfNet);flowBar('c1In','c1Out',mIn,mOutCaixaShown+mTransfNet);
   setBal('c2Bal',comp);document.getElementById('c2InV').textContent=money(mIn);document.getElementById('c2OutV').textContent=money(mOutAll);flowBar('c2In','c2Out',mIn,mOutAll);
   const net=mIn-mOutAll+mReembolsoTodos, pinf=parcelaInfo(curMonth);
   document.getElementById('homeKpis').innerHTML=`
@@ -1352,10 +1378,9 @@ function renderTx(){
 function buildSaldoMap(scopeList){
   const chrono=[...scopeList].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
   const saldoMap={};
-  const anchor=DB.settings?.saldoInicialData;
-  let run=0,usedAnchor=false;
+  const antes=chrono.length?saldoCaixaAntesDe(chrono[0].date):null;
+  let run=antes!=null?antes:0;
   chrono.forEach(t=>{
-    if(anchor&&!usedAnchor&&t.date>=anchor){run=saldoCaixaAntesDe(t.date);usedAnchor=true;}
     if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
     else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
     else saldoMap[t.id]=null;
@@ -2757,8 +2782,9 @@ function saveCaixinha(){if(!caixinhaDraft.name.trim())return toast('Dê um títu
   if(caixinhaDraft.id){const i=DB.caixinhas.findIndex(x=>x.id===caixinhaDraft.id);DB.caixinhas[i]={...DB.caixinhas[i],...caixinhaDraft};}
   else DB.caixinhas.push({...caixinhaDraft,id:uid(),createdAt:Date.now()});
   save();closeSheet();renderCaixinhas();toast('Caixinha salva ✓');}
-function deleteCaixinha(id){const n=(DB.transfers||[]).filter(t=>t.caixinhaId===id).length;
-  if(n)return toast('Essa caixinha tem histórico de movimentações. Resgate tudo antes de excluir.');
+function deleteCaixinha(id){const s=caixinhaSaldo(id);
+  if(s!==0)return toast('Essa caixinha ainda tem saldo ('+money(s)+'). Resgate tudo antes de excluir.');
+  DB.transfers=(DB.transfers||[]).filter(t=>t.caixinhaId!==id); // limpa o histórico órfão, já que o saldo está zerado
   DB.caixinhas=DB.caixinhas.filter(c=>c.id!==id);save();closeSheet();renderCaixinhas();toast('Caixinha excluída');}
 function caixinhaDetail(id){const c=DB.caixinhas.find(x=>x.id===id);if(!c)return;const s=caixinhaSaldo(id);
   const hist=(DB.transfers||[]).filter(t=>t.caixinhaId===id).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
