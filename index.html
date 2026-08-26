@@ -810,7 +810,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.04-22'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.05-23'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1060,24 +1060,31 @@ function renderFaturaCards(){
       <div class="num" style="font-weight:600;color:${f.color}">${money(total)}</div><span class="chev">›</span></button>`;}).join('');
 }
 var fechDraft=null;
-function openFechamentoFatura(formaId){
-  fechDraft={formaId:formaId||cardFormas()[0]?.id,date:todayLocal()};
+function openFechamentoFatura(formaId,editId){
+  if(editId){const f=(DB.faturaFechamentos||[]).find(x=>x.id===editId);
+    fechDraft={formaId:f.formaId,date:f.date,editId};}
+  else fechDraft={formaId:formaId||cardFormas()[0]?.id,date:todayLocal(),editId:null};
   renderFechamentoSheet();
 }
 function renderFechamentoSheet(){
   const options=cardFormas();
-  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>Fechamento de fatura</h2><button class="x" onclick="closeSheet()">✕</button></div>
+  showSheet(`<div class="sheet-grip"></div><div class="sheet-h"><h2>${fechDraft.editId?'Editar':''} Fechamento de fatura</h2><button class="x" onclick="closeSheet()">✕</button></div>
     <p style="font-size:12.5px;color:var(--muted);margin:0 2px 14px">Marca o fim de um ciclo — sem valor. A partir dessa data, o app volta a contar do zero a fatura desse cartão, igual o corte que o banco faz.</p>
     <div class="field"><label>Cartão</label><select class="input" onchange="fechDraft.formaId=this.value">
       ${options.map(f=>`<option value="${f.id}" ${fechDraft.formaId===f.id?'selected':''}>${f.emoji} ${f.name}</option>`).join('')}</select></div>
     <div class="field"><label>Data do fechamento</label><input class="input" type="date" value="${fechDraft.date}" onchange="fechDraft.date=this.value"></div>
-    <button class="btn btn-primary" onclick="saveFechamentoFatura()">Confirmar fechamento</button>`);
+    <button class="btn btn-primary" onclick="saveFechamentoFatura()">${fechDraft.editId?'Salvar':'Confirmar fechamento'}</button>
+    ${fechDraft.editId?`<button class="btn btn-danger" style="margin-top:10px" onclick="deleteFechamento('${fechDraft.editId}','${fechDraft.formaId}')">Excluir fechamento</button>`:''}`);
 }
 function saveFechamentoFatura(){
   if(!fechDraft.formaId)return toast('Escolha um cartão');
   if(!DB.faturaFechamentos)DB.faturaFechamentos=[];
-  DB.faturaFechamentos.push({id:uid(),formaId:fechDraft.formaId,date:fechDraft.date,createdAt:Date.now()});
-  save();closeSheet();renderHome();toast('Fechamento registrado ✓');
+  if(fechDraft.editId){const i=DB.faturaFechamentos.findIndex(x=>x.id===fechDraft.editId);
+    if(i>=0)DB.faturaFechamentos[i]={...DB.faturaFechamentos[i],formaId:fechDraft.formaId,date:fechDraft.date};}
+  else DB.faturaFechamentos.push({id:uid(),formaId:fechDraft.formaId,date:fechDraft.date,createdAt:Date.now()});
+  save();closeSheet();renderHome();
+  if(document.getElementById('scr-tx')?.classList.contains('active'))renderTx();
+  toast(fechDraft.editId?'Fechamento atualizado ✓':'Fechamento registrado ✓');
 }
 function openFaturaDetail(formaId){
   const f=DB.formas.find(x=>x.id===formaId);if(!f)return;
@@ -1095,14 +1102,16 @@ function openFaturaDetail(formaId){
       <div class="row-mid"><div class="row-title">${esc(t.description||c.name)}</div><div class="row-sub">${fmtDate(t.date)}${t.parcelado&&t.totalParcelas>1?' · '+t.parcela+'/'+t.totalParcelas:''}</div></div>
       <div class="num" style="font-weight:600">${money(t.amountCents)}</div></div>`;}).join('')}</div>`:'<p style="font-size:13px;color:var(--muted)">Nada lançado ainda nesse ciclo.</p>'}
     ${hist.length?`<div class="dgroup-h" style="margin-top:16px">Fechamentos anteriores</div>
-    <div class="row-list">${hist.map(h=>`<div class="row" style="cursor:default">
+    <div class="row-list">${hist.map(h=>`<div class="row" style="cursor:pointer" onclick="openFechamentoFatura('${formaId}','${h.id}')">
       <div class="row-mid"><div class="row-title">${fmtDate(h.date)}</div></div>
-      <button class="iconbtn" onclick="deleteFechamento('${h.id}','${formaId}')">✕</button></div>`).join('')}</div>`:''}`);
+      <button class="iconbtn" onclick="event.stopPropagation();deleteFechamento('${h.id}','${formaId}')">✕</button></div>`).join('')}</div>`:''}`);
 }
 function deleteFechamento(id,formaId){
   if(!confirm('Remover esse fechamento? A fatura volta a contar a partir do fechamento anterior.'))return;
   DB.faturaFechamentos=(DB.faturaFechamentos||[]).filter(x=>x.id!==id);
-  save();openFaturaDetail(formaId);renderHome();toast('Removido');
+  save();openFaturaDetail(formaId);renderHome();
+  if(document.getElementById('scr-tx')?.classList.contains('active'))renderTx();
+  toast('Removido');
 }
 // reembolso vinculado a uma categoria de saída específica (ex: reembolso de mercado) — abate o gasto daquela categoria naquele mês
 function monthCategoryRefundAdj(catId,ym){return monthTx(ym).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)&&t.refundCategoryId===catId).reduce((s,t)=>s+t.amountCents,0);}
@@ -1269,6 +1278,14 @@ function transfersAsTx(){
       parcelado:false,totalParcelas:1,parcela:1,formaId:null,cartao:'',categoryId:null,
       description:(t.direction==='in'?'Guardado em ':'Resgatado de ')+(cx?cx.name:'caixinha'),
       note:t.note,createdAt:t.createdAt,sortIndex:t.sortIndex??t.createdAt};});}
+function faturaFechamentosAsTx(){
+  return (DB.faturaFechamentos||[]).map(f=>{
+    const forma=DB.formas.find(x=>x.id===f.formaId);
+    return {id:'fech_'+f.id,isFechamento:true,fechamentoId:f.id,_forma:forma,
+      type:null,amountCents:0,date:f.date,regime:null,
+      parcelado:false,totalParcelas:1,parcela:1,formaId:f.formaId,cartao:'',categoryId:null,
+      description:'Fechamento de fatura'+(forma?' — '+forma.name:''),note:'',
+      createdAt:f.createdAt,sortIndex:f.createdAt};});}
 function renderTx(){
   // forma filter options
   const ff=document.getElementById('txFormaFilter');
@@ -1282,21 +1299,25 @@ function renderTx(){
   const formaF=ff.value;
   const regimeF=document.getElementById('txRegimeFilter').value;
   const catF=cf.value;
-  const match=t=>{
-    if(!scopeAll&&t.date.slice(0,7)!==curMonth)return false;
+  // escopo de período (mês atual ou tudo) — usado pra calcular o saldo real, sem os filtros visuais
+  const scopeMatch=t=>!scopeAll&&t.date.slice(0,7)!==curMonth?false:true;
+  // filtros visuais (forma/regime/categoria/busca/aba) — só decidem o que É EXIBIDO, nunca o cálculo do saldo
+  const displayMatch=t=>{
     if(txFilter!=='all'&&t.type!==txFilter)return false;
     if(formaF&&t.formaId!==formaF)return false;
     if(regimeF&&t.regime!==regimeF)return false;
     if(catF&&t.categoryId!==catF)return false;
     if(q){const catName=t.isTransfer?'':catById(t.categoryId).name;if(!((t.description||'').toLowerCase().includes(q)||catName.toLowerCase().includes(q)))return false;}
     return true;};
-  let list=[...DB.transactions,...transfersAsTx()].filter(match);
+  const scopeList=[...DB.transactions,...transfersAsTx(),...faturaFechamentosAsTx()].filter(scopeMatch); // a "realidade" do período — sempre completa
+  const saldoMap=buildSaldoMap(scopeList); // calculado uma vez só, sobre o período inteiro, antes de qualquer filtro visual
+  let list=scopeList.filter(displayMatch);
   const box=document.getElementById('txContent');
   if(!list.length){box.innerHTML=emptyHTML('🔍','Nada por aqui',scopeAll?'Nenhum lançamento encontrado.':'Sem lançamentos neste mês. Toque no + para adicionar.');return;}
 
   if(!scopeAll){
     const pinf=parcelaInfo(curMonth);
-    const parc=pinf.ps.filter(match);
+    const parc=pinf.ps.filter(displayMatch);
     // normais = não parcelado OU primeira parcela (começa este mês, trata como normal)
     const normais=list.filter(t=>!(t.parcelado&&t.totalParcelas>1&&t.parcela>1)).sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
     let html='';
@@ -1307,8 +1328,8 @@ function renderTx(){
         <div class="pi"><div class="l">Total parcelas</div><div class="v">${money(pinf.totalSum)}</div></div></div>`;
     }
     if(isDesktop()){
-      html+=parc.length?('<div class="section-h"><h2>Parcelas do mês</h2></div>'+txTable(parc,true)):'';
-      html+=`<div class="section-h"><h2>Lançamentos do mês</h2></div>`+txTable(normais,false);
+      html+=parc.length?('<div class="section-h"><h2>Parcelas do mês</h2></div>'+txTable(parc,true,saldoMap)):'';
+      html+=`<div class="section-h"><h2>Lançamentos do mês</h2></div>`+txTable(normais,false,saldoMap);
     }else{
       if(parc.length){html+='<div class="tx-day">Parcelas (da mais próxima de encerrar)</div>'+parc.map(txCard).join('');}
       let last='';html+='<div>';
@@ -1318,15 +1339,37 @@ function renderTx(){
     box.innerHTML=html;
   }else{
     list.sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
-    box.innerHTML=isDesktop()?txTable(list,false):list.map(txCard).join('');
+    box.innerHTML=isDesktop()?txTable(list,false,saldoMap):list.map(txCard).join('');
   }
   bindCards(box);
   initDragTxOnce();
   const sortableTbl=box.querySelector('table.sortable-tx tbody');
   if(sortableTbl)makeSortableTx(sortableTbl);
 }
+// calcula o saldo corrente (regime caixa) pra cada lançamento de uma lista, em ordem cronológica,
+// partindo do saldo inicial configurado (se houver). Sempre roda sobre a lista COMPLETA do período,
+// nunca sobre uma lista já filtrada por forma/regime/categoria/busca.
+function buildSaldoMap(scopeList){
+  const chrono=[...scopeList].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
+  const saldoMap={};
+  const anchor=DB.settings?.saldoInicialData;
+  let run=0,usedAnchor=false;
+  chrono.forEach(t=>{
+    if(anchor&&!usedAnchor&&t.date>=anchor){run=saldoCaixaAntesDe(t.date);usedAnchor=true;}
+    if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
+    else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
+    else saldoMap[t.id]=null;
+  });
+  return saldoMap;
+}
 function parcClass(t){if(!(t.parcelado&&t.totalParcelas>1))return'';return t.parcela>=t.totalParcelas?'pe':'pc';}
 function txCard(t){
+  if(t.isFechamento){const forma=t._forma;
+    return `<button class="tx" data-id="${t.id}">
+      <div class="tx-ico" style="background:${forma?forma.color+'22':'var(--paper-2)'};color:${forma?forma.color:'var(--muted)'}">📅</div>
+      <div class="tx-mid"><div class="tx-desc">${esc(t.description)}</div>
+        <div class="tx-meta">Fechamento de ciclo · sem valor</div></div>
+      <div class="tx-amt" style="color:var(--muted)">—</div></button>`;}
   if(t.isTransfer){const cx=t._caixinha;const sign=t.type==='entrada'?'+':'−';
     return `<button class="tx" data-id="${t.id}">
       <div class="tx-ico" style="background:${(cx?cx.color:'#5B7DB1')}22;color:${cx?cx.color:'#5B7DB1'}">${cx?cx.emoji:'🐷'}</div>
@@ -1343,24 +1386,23 @@ function txCard(t){
     <div class="tx-mid"><div class="tx-desc">${esc(t.description||c.name)}${ptag}${excTag}</div>
       <div class="tx-meta">${c.name}${f?' · '+esc(f.name):''}${t.cartao?' · '+esc(t.cartao):''}</div></div>
     <div class="tx-amt ${isRef?'':(t.type==='entrada'?'in':'out')}" style="${isRef?'color:var(--transfer)':''}">${sign} ${money(t.amountCents)}</div></button>`;}
-function txTable(list,isParc){
+function txTable(list,isParc,saldoMap){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
-  // saldo corrente (apenas regime caixa) — calculado em ordem cronológica crescente,
-  // partindo do saldo inicial configurado em Ajustes (se houver) em vez de sempre zero
-  const chrono=[...list].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
-  const saldoMap={};
-  const anchor=DB.settings?.saldoInicialData;
-  let run=0,usedAnchor=false;
-  chrono.forEach(t=>{
-    // no exato momento em que a data cruza a do saldo inicial, o saldo "salta" pro valor
-    // correto (descartando o acúmulo ingênuo de antes, que não tinha como estar certo)
-    if(anchor&&!usedAnchor&&t.date>=anchor){run=saldoCaixaAntesDe(t.date);usedAnchor=true;}
-    if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
-    else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
-    else saldoMap[t.id]=null; // competência não movimenta caixa → sem saldo
-  });
+  saldoMap=saldoMap||buildSaldoMap(list); // fallback de segurança, caso algum chamador antigo não passe o mapa
   const rows=list.map(t=>{const pc=parcClass(t);const sld=saldoMap[t.id];
     const handle=isParc?'':`<td class="td-handle"><span class="dhandle-tx" title="Arrastar para reordenar">⠿</span></td>`;
+    if(t.isFechamento){const forma=t._forma;
+      return `<tr data-id="${t.id}" ${isParc?'':`data-tid="${t.id}"`}>
+        ${handle}
+        <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
+        <td class="r td-num">—</td><td class="r td-num">—</td>
+        <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
+        <td style="text-align:center"><span class="mini-tag" style="background:var(--paper-2);color:var(--muted)">Fechamento</span></td>
+        <td class="td-num" style="text-align:center">—</td>
+        <td>${forma?esc(forma.name):'—'}</td><td class="td-num" style="text-align:center">—</td>
+        <td><span class="catdot" style="background:${forma?forma.color:'var(--muted)'}"></span>${forma?esc(forma.name):'Cartão'}</td>
+        <td class="tdesc">${esc(t.description||'')}</td>
+        <td class="r c-edit"><button class="iconbtn" data-id="${t.id}">✎</button></td></tr>`;}
     if(t.isTransfer){const cx=t._caixinha;
       return `<tr data-id="${t.id}" ${isParc?'':`data-tid="${t.id}"`}>
         ${handle}
@@ -1400,6 +1442,7 @@ function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.oncli
   if(window.__txDragJustHappened)return;
   const id=b.dataset.id;
   if(id.startsWith('transfer_')){editTransfer(id.slice(9));return;}
+  if(id.startsWith('fech_')){const f=(DB.faturaFechamentos||[]).find(x=>x.id===id.slice(5));if(f)openFechamentoFatura(f.formaId,f.id);return;}
   openTx(id);});}
 function dayLabel(iso){const t=todayLocal();if(iso===t)return'Hoje';
   const y=new Date(Date.now()-864e5-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);if(iso===y)return'Ontem';
@@ -1495,6 +1538,7 @@ function renderCatDrill(catId){
   if(!catId){box.innerHTML='';return;}
   const c=catById(catId);
   const list=monthTx(curMonth).filter(t=>t.type==='saida'&&t.categoryId===catId&&!t.excludeTotal).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+  const reembolsos=monthTx(curMonth).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)&&t.refundCategoryId===catId).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
   const rawSum=list.reduce((s,t)=>s+t.amountCents,0);
   const refundAdj=monthCategoryRefundAdj(catId,curMonth);
   const sum=Math.max(0,rawSum-refundAdj);
@@ -1503,8 +1547,13 @@ function renderCatDrill(catId){
     const raw=DB.transactions.filter(t=>t.type==='saida'&&t.categoryId===catId&&!t.excludeTotal&&t.date.slice(0,7)===m).reduce((s,t)=>s+t.amountCents,0);
     return Math.max(0,raw-monthCategoryRefundAdj(catId,m));
   });
+  const reembolsosHTML=reembolsos.length?`<div class="dgroup-h" style="margin-top:14px">Reembolsos vinculados (abatem o gasto acima)</div>
+    <div class="row-list">${reembolsos.map(t=>`<div class="row" style="cursor:pointer" onclick="openTx('${t.id}')">
+      <div class="row-ico" style="background:var(--transfer-bg);color:var(--transfer)">↩️</div>
+      <div class="row-mid"><div class="row-title">${esc(t.description||'Reembolso/Estorno')}</div><div class="row-sub">${fmtDate(t.date)}</div></div>
+      <div class="num" style="font-weight:600;color:var(--transfer)">− ${money(t.amountCents)}</div></div>`).join('')}</div>`:'';
   const histHTML=`<div class="card" style="padding:8px 4px;margin-bottom:14px"><div class="chart-box" style="height:180px"><canvas id="catDrillChart"></canvas></div></div>`;
-  if(!list.length){box.innerHTML=`<p style="color:var(--muted);font-size:12.5px;padding:4px 2px 12px">Nenhum gasto em ${c.name} neste mês.</p>`+histHTML;
+  if(!list.length){box.innerHTML=`<p style="color:var(--muted);font-size:12.5px;padding:4px 2px 12px">Nenhum gasto em ${c.name} neste mês.</p>`+histHTML+reembolsosHTML;
     renderCatDrillChart(months,histVals,c);return;}
   box.innerHTML=`<div class="card" style="padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
       <div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
@@ -1515,7 +1564,8 @@ function renderCatDrill(catId){
       return `<div class="row" style="cursor:default"><div class="row-mid">
         <div class="row-title">${esc(t.description||c.name)}</div>
         <div class="row-sub">${fmtDate(t.date)}${f?' · '+esc(f.name):''}${t.parcelado&&t.totalParcelas>1?' · '+t.parcela+'/'+t.totalParcelas:''}</div></div>
-        <div class="num" style="font-weight:600">${money(t.amountCents)}</div></div>`;}).join('')}</div>`;
+        <div class="num" style="font-weight:600">${money(t.amountCents)}</div></div>`;}).join('')}</div>
+    ${reembolsosHTML}`;
   renderCatDrillChart(months,histVals,c);
 }
 function renderCatDrillChart(months,vals,c){
