@@ -572,9 +572,9 @@ tr.dragging-tx{opacity:.4}
     <!-- ORÇAMENTO -->
     <section class="screen" id="scr-budget">
       <div class="section-h" style="margin-top:8px"><h2>Orçamento — <span id="budMonth" style="text-transform:capitalize"></span></h2>
-        <button class="link" onclick="openAddBudget()">+ Categoria</button></div>
+        <button class="link" onclick="copyPrevBudget()">Copiar do mês anterior</button></div>
       <div id="budTotals"></div>
-      <div id="budgetList"></div>
+      <div style="overflow-x:auto"><div id="budgetList"></div></div>
       <div class="section-h"><h2>Metas de economia</h2><button class="link" onclick="openGoal()">+ Nova</button></div>
       <div id="goalList"></div>
     </section>
@@ -818,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.06-26'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.06-27'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1617,40 +1617,45 @@ function renderCatDrillChart(months,vals,c){
 function getBudget(ym){return DB.budgets[ym]||{};}
 function renderBudget(){
   document.getElementById('budMonth').textContent=monthShort(curMonth);
-  const b=getBudget(curMonth);const ids=Object.keys(b);
+  const b=getBudget(curMonth);
   const bl=document.getElementById('budgetList');const tot=document.getElementById('budTotals');
-  let orcado=0,gasto=0;
-  ids.forEach(id=>{orcado+=b[id];gasto+=catSpendNet(id,curMonth);});
-  if(ids.length){
-    const pct=orcado?Math.min(100,gasto/orcado*100):0;
+  const cats=catsByKind('saida').filter(c=>!c.isCardPayment);
+  const rows=cats.map(c=>{const orcado=b[c.id]||0;const gasto=catSpendNet(c.id,curMonth);return {c,orcado,gasto,saldo:orcado-gasto};})
+    .sort((a,b)=>b.gasto-a.gasto);
+  const orcadoTot=rows.reduce((s,r)=>s+r.orcado,0);
+  const gastoTot=rows.reduce((s,r)=>s+r.gasto,0);
+  if(orcadoTot>0){
+    const pct=Math.min(100,gastoTot/orcadoTot*100);
     tot.innerHTML=`<div class="card" style="padding:14px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--muted);font-weight:600">Gasto / Orçado</span>
-      <span class="num" style="font-weight:600">${money(gasto)} / ${money(orcado)}</span></div>
-      <div class="bar"><span style="width:${pct}%;background:${gasto>orcado?'var(--saida)':'var(--teal)'}"></span></div></div>`;
-  }else tot.innerHTML='';
-  const prev=getBudget(addMonthsYm(curMonth,-1));
-  if(!ids.length){
-    let h=emptyHTML('🎯','Sem orçamento neste mês','Adicione categorias e defina um limite. Você escolhe se vale só este mês, este e os próximos, ou todos.');
-    if(Object.keys(prev).length) h+=`<div style="text-align:center;margin-top:-12px"><button class="btn btn-ghost btn-sm" onclick="copyPrevBudget()">Copiar do mês anterior</button></div>`;
-    bl.innerHTML=h;return;
-  }
-  bl.innerHTML=ids.sort((x,y)=>(catById(x).order??0)-(catById(y).order??0)).map(id=>{
-    const c=catById(id);const limit=b[id];
-    const spent=catSpendNet(id,curMonth);
-    const pct=limit?Math.min(100,spent/limit*100):0;const over=spent>limit;
-    return `<div class="card" style="padding:14px;margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
-        <div style="flex:1"><div style="font-weight:600;font-size:14px">${c.name}</div>
-          <div style="font-size:12px;color:var(--muted)" class="num">${money(spent)} de ${money(limit)}</div></div>
-        <span class="badge ${over?'warn':'ok'}">${Math.round(pct)}%</span>
-        <button class="iconbtn" onclick="openEditBudget('${id}')">✎</button>
-        <button class="iconbtn" onclick="removeBudgetCat('${id}')">✕</button></div>
-      <div class="bar"><span style="width:${pct}%;background:${over?'var(--saida)':c.color}"></span></div></div>`;}).join('');
-  // metas
+      <span class="num" style="font-weight:600">${money(gastoTot)} / ${money(orcadoTot)}</span></div>
+      <div class="bar"><span style="width:${pct}%;background:${gastoTot>orcadoTot?'var(--saida)':'var(--teal)'}"></span></div></div>`;
+  }else tot.innerHTML='<p style="font-size:12.5px;color:var(--muted);margin:0 2px 12px">Defina um limite pra cada categoria abaixo pra acompanhar o progresso.</p>';
+  bl.innerHTML=`<table class="imp-tbl budget-tbl"><thead><tr>
+      <th style="text-align:left">Categoria</th><th class="r">Orçado</th><th class="r">Gasto</th><th class="r">Saldo</th></tr></thead>
+    <tbody>${rows.map(r=>{const over=r.orcado>0&&r.gasto>r.orcado;
+      return `<tr><td style="white-space:nowrap"><span class="catdot" style="background:${r.c.color}"></span>${r.c.emoji} ${r.c.name}</td>
+      <td class="r"><input class="input num" style="width:100px;text-align:right;padding:6px 8px;display:inline-block" inputmode="numeric"
+        value="${r.orcado?plain(r.orcado):''}" placeholder="0,00"
+        oninput="this.value=this.value?plain(digitsToCents(this.value)):''"
+        onchange="saveBudgetCell('${r.c.id}',digitsToCents(this.value))"></td>
+      <td class="r num" style="${over?'color:var(--saida);font-weight:600':''}">${money(r.gasto)}</td>
+      <td class="r num" style="font-weight:600;color:${r.orcado?(r.saldo<0?'var(--saida)':'var(--entrada)'):'var(--muted-2)'}">${r.orcado?money(r.saldo):'—'}</td></tr>`;}).join('')}</tbody>
+    <tfoot><tr style="font-weight:600;border-top:2px solid var(--line)"><td>Total</td>
+      <td class="r num">${money(orcadoTot)}</td><td class="r num">${money(gastoTot)}</td>
+      <td class="r num" style="color:${orcadoTot-gastoTot<0?'var(--saida)':'var(--entrada)'}">${orcadoTot?money(orcadoTot-gastoTot):'—'}</td></tr></tfoot>
+    </table>`;
   renderGoals();
 }
-function copyPrevBudget(){const prev={...getBudget(addMonthsYm(curMonth,-1))};DB.budgets[curMonth]={...prev};save();renderBudget();toast('Orçamento copiado ✓');}
+function saveBudgetCell(catId,cents){
+  if(!DB.budgets[curMonth])DB.budgets[curMonth]={};
+  if(cents>0)DB.budgets[curMonth][catId]=cents;
+  else delete DB.budgets[curMonth][catId];
+  save();renderBudget();
+}
+function copyPrevBudget(){const prev={...getBudget(addMonthsYm(curMonth,-1))};
+  if(!Object.keys(prev).length)return toast('Mês anterior não tem orçamento definido');
+  DB.budgets[curMonth]={...prev};save();renderBudget();toast('Orçamento copiado ✓');}
 function openAddBudget(){
   const inBud=getBudget(curMonth);const avail=catsByKind('saida').filter(c=>!(c.id in inBud));
   if(!avail.length)return toast('Todas as categorias de saída já estão no orçamento');
