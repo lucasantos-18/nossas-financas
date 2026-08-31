@@ -818,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.05-25'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.06-26'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -994,10 +994,12 @@ function balCompromisso(){let e=0,s=0;for(const t of DB.transactions){if(t.type=
 const monthTx=ym=>DB.transactions.filter(t=>t.date.slice(0,7)===ym);
 const monthSum=(ym,type)=>monthTx(ym).filter(t=>t.type===type
     &&!t.excludeTotal
-    &&!(type==='entrada'&&isRefundCat(t.categoryId))
+    &&!(type==='entrada'&&isRefundCat(t.categoryId)&&!(t.refundCategoryId&&catById(t.refundCategoryId).kind==='entrada'))
     &&!(type==='saida'&&isCardPaymentCat(t.categoryId))
   ).reduce((s,t)=>s+t.amountCents,0);
-function monthRefundSum(ym,onlyCaixa){return monthTx(ym).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)&&(!onlyCaixa||t.regime==='caixa')).reduce((s,t)=>s+t.amountCents,0);}
+function monthRefundSum(ym,onlyCaixa){return monthTx(ym).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)
+  &&!(t.refundCategoryId&&catById(t.refundCategoryId).kind==='entrada') // vinculado a entrada já entra normal pelo mIn, não soma de novo aqui
+  &&(!onlyCaixa||t.regime==='caixa')).reduce((s,t)=>s+t.amountCents,0);}
 
 /* Saldo em caixa ACUMULADO a partir de um saldo inicial conhecido — resolve o problema de
    não ter o histórico completo lançado: em vez de tentar calcular desde sempre (o que dá
@@ -1284,13 +1286,15 @@ function renderHomeCharts(){
         scales:{x:{grid:{display:false}},y:{grid:{color:'#E0E6E4'},ticks:{callback:v=>'R$'+(v>=1000?(v/1000)+'k':v)}}}}});}
   const cEl=document.getElementById('homeCat'),leg=document.getElementById('homeCatLegend');
   if(cEl){const map={};monthTx(curMonth).filter(t=>t.type==='saida'&&!isCardPaymentCat(t.categoryId)&&!t.excludeTotal).forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
-  Object.keys(map).forEach(id=>{map[id]=Math.max(0,map[id]-monthCategoryRefundAdj(id,curMonth));});
+  Object.keys(map).forEach(id=>{map[id]=map[id]-monthCategoryRefundAdj(id,curMonth);});
     const en=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    const enChart=en.filter(([,v])=>v>0);
     if(homeCatChart)homeCatChart.destroy();
-    if(!en.length){cEl.getContext('2d').clearRect(0,0,cEl.width,cEl.height);if(leg)leg.innerHTML='<span style="color:var(--muted);font-size:12px;padding:8px">Sem saídas neste mês.</span>';}
-    else{homeCatChart=new Chart(cEl,{type:'doughnut',data:{labels:en.map(([id])=>catById(id).name),datasets:[{data:en.map(([,v])=>v/100),backgroundColor:en.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
+    if(!enChart.length){cEl.getContext('2d').clearRect(0,0,cEl.width,cEl.height);if(leg)leg.innerHTML='<span style="color:var(--muted);font-size:12px;padding:8px">Sem saídas neste mês.</span>';}
+    else{homeCatChart=new Chart(cEl,{type:'doughnut',data:{labels:enChart.map(([id])=>catById(id).name),datasets:[{data:enChart.map(([,v])=>v/100),backgroundColor:enChart.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
       options:{cutout:'62%',maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.label+': '+BRL.format(c.parsed)}}}}});
-      if(leg)leg.innerHTML=en.slice(0,8).map(([id,v],i)=>{const c=catById(id);return `<div class="li"><span class="dot" style="background:${CHART_PAL[i%CHART_PAL.length]}"></span>${c.name} · <b class="num">${money(v)}</b></div>`;}).join('');}}
+      if(leg)leg.innerHTML=en.slice(0,8).map(([id,v],i)=>{const c=catById(id);const gain=v<0;
+        return `<div class="li"><span class="dot" style="background:${gain?'var(--entrada)':CHART_PAL[i%CHART_PAL.length]}"></span>${c.name} · <b class="num" style="${gain?'color:var(--entrada)':''}">${gain?'+':''}${money(Math.abs(v))}</b></div>`;}).join('');}}
 }
 
 /* ===== TRANSAÇÕES ===== */
@@ -1492,14 +1496,15 @@ function renderCharts(){
   const kn=document.getElementById('kNet');kn.textContent=money(net);kn.style.color=net>=0?'var(--entrada)':'var(--saida)';
   document.getElementById('kRate').textContent=(inc>0?Math.round(net/inc*100):0)+'%';
   const map={};monthTx(curMonth).filter(t=>t.type==='saida'&&!isCardPaymentCat(t.categoryId)&&!t.excludeTotal).forEach(t=>map[t.categoryId]=(map[t.categoryId]||0)+t.amountCents);
-  Object.keys(map).forEach(id=>{map[id]=Math.max(0,map[id]-monthCategoryRefundAdj(id,curMonth));});
+  Object.keys(map).forEach(id=>{map[id]=map[id]-monthCategoryRefundAdj(id,curMonth);}); // não trava mais em zero — reembolso maior que o gasto aparece como saldo positivo (negativo aqui)
   const en=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const enChart=en.filter(([,v])=>v>0); // a pizza não representa fatia negativa — essas ficam só na lista
   if(catChart)catChart.destroy();
   const cv=document.getElementById('catChart');
-  if(!en.length){cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
+  if(!enChart.length){cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
   else{catChart=new Chart(cv,{type:'doughnut',
-    data:{labels:en.map(([id])=>catById(id).name),datasets:[{data:en.map(([,v])=>v/100),
-      backgroundColor:en.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
+    data:{labels:enChart.map(([id])=>catById(id).name),datasets:[{data:enChart.map(([,v])=>v/100),
+      backgroundColor:enChart.map((_,i)=>CHART_PAL[i%CHART_PAL.length]),borderWidth:2,borderColor:'#fff'}]},
     options:{cutout:'62%',maintainAspectRatio:false,plugins:{legend:{display:false},
       tooltip:{callbacks:{label:c=>' '+c.label+': '+BRL.format(c.parsed)}}}}});}
   renderCatFullList(en,out);
@@ -1521,11 +1526,12 @@ function renderCharts(){
 function renderCatFullList(en,total){
   const box=document.getElementById('catFullList');if(!box)return;
   if(!en.length){box.innerHTML='<p style="color:var(--muted);font-size:12.5px;padding:12px">Sem saídas neste mês.</p>';return;}
-  box.innerHTML=en.map(([id,v],i)=>{const c=catById(id);const pct=total?Math.round(v/total*100):0;
+  box.innerHTML=en.map(([id,v],i)=>{const c=catById(id);const isGain=v<0;
+    const pct=total&&!isGain?Math.round(v/total*100)+'% do total':(isGain?'reembolso maior que o gasto':'0% do total');
     return `<button class="row" style="padding:10px 8px" onclick="document.getElementById('catDrillSelect').value='${id}';renderCatDrill('${id}')">
-      <div class="row-ico" style="background:${CHART_PAL[i%CHART_PAL.length]}22;color:${CHART_PAL[i%CHART_PAL.length]}">${c.emoji}</div>
-      <div class="row-mid"><div class="row-title">${c.name}</div><div class="row-sub">${pct}% do total</div></div>
-      <div class="num" style="font-weight:600">${money(v)}</div></button>`;}).join('');
+      <div class="row-ico" style="background:${isGain?'var(--entrada-bg)':CHART_PAL[i%CHART_PAL.length]+'22'};color:${isGain?'var(--entrada)':CHART_PAL[i%CHART_PAL.length]}">${c.emoji}</div>
+      <div class="row-mid"><div class="row-title">${c.name}</div><div class="row-sub" style="${isGain?'color:var(--entrada)':''}">${pct}</div></div>
+      <div class="num" style="font-weight:600;${isGain?'color:var(--entrada)':''}">${isGain?'+':''}${money(Math.abs(v))}</div></button>`;}).join('');
 }
 function renderCatMatrix(){
   const box=document.getElementById('catMatrix');if(!box)return;
@@ -1536,20 +1542,22 @@ function renderCatMatrix(){
   const data=cats.map(c=>{
     const vals=months.map(m=>{
       const raw=DB.transactions.filter(t=>t.type==='saida'&&t.categoryId===c.id&&!t.excludeTotal&&t.date.slice(0,7)===m).reduce((s,t)=>s+t.amountCents,0);
-      return Math.max(0,raw-monthCategoryRefundAdj(c.id,m));
+      return raw-monthCategoryRefundAdj(c.id,m); // sem travar em zero — pode ficar negativo (reembolso > gasto)
     });
     return {c,vals,total:vals.reduce((s,v)=>s+v,0)};
-  }).filter(r=>r.total>0).sort((a,b)=>b.total-a.total);
+  }).filter(r=>r.total!==0).sort((a,b)=>b.total-a.total);
   if(!data.length){box.innerHTML='<p style="color:var(--muted);font-size:12.5px;padding:12px">Sem dados nesse período.</p>';return;}
   const monthTotals=months.map((m,i)=>data.reduce((s,r)=>s+r.vals[i],0));
   const grandTotal=monthTotals.reduce((s,v)=>s+v,0);
+  const cellHTML=v=>v===0?`<td class="r num" style="color:var(--muted-2)">—</td>`:v<0?`<td class="r num" style="color:var(--entrada)">+${money(Math.abs(v))}</td>`:`<td class="r num">${money(v)}</td>`;
   box.innerHTML=`<table class="imp-tbl matrix-tbl"><thead><tr>
       <th style="text-align:left">Categoria</th>${months.map(m=>`<th class="r">${monthShort(m)}</th>`).join('')}<th class="r">Total</th></tr></thead>
     <tbody>${data.map(r=>`<tr><td style="white-space:nowrap"><span class="catdot" style="background:${r.c.color}"></span>${r.c.emoji} ${r.c.name}</td>
-      ${r.vals.map(v=>`<td class="r num" style="${v?'':'color:var(--muted-2)'}">${v?money(v):'—'}</td>`).join('')}
-      <td class="r num" style="font-weight:600">${money(r.total)}</td></tr>`).join('')}</tbody>
+      ${r.vals.map(cellHTML).join('')}
+      <td class="r num" style="font-weight:600;${r.total<0?'color:var(--entrada)':''}">${r.total<0?'+':''}${money(Math.abs(r.total))}</td></tr>`).join('')}</tbody>
     <tfoot><tr style="font-weight:600;border-top:2px solid var(--line)"><td>Total</td>
-      ${monthTotals.map(v=>`<td class="r num">${money(v)}</td>`).join('')}<td class="r num">${money(grandTotal)}</td></tr></tfoot>
+      ${monthTotals.map(v=>v<0?`<td class="r num" style="color:var(--entrada)">+${money(Math.abs(v))}</td>`:`<td class="r num">${money(v)}</td>`).join('')}
+      <td class="r num">${grandTotal<0?'+':''}${money(Math.abs(grandTotal))}</td></tr></tfoot>
     </table>`;
 }
 
@@ -1569,11 +1577,11 @@ function renderCatDrill(catId){
   const reembolsos=monthTx(curMonth).filter(t=>t.type==='entrada'&&isRefundCat(t.categoryId)&&t.refundCategoryId===catId).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
   const rawSum=list.reduce((s,t)=>s+t.amountCents,0);
   const refundAdj=monthCategoryRefundAdj(catId,curMonth);
-  const sum=Math.max(0,rawSum-refundAdj);
+  const sum=rawSum-refundAdj; // não trava mais em zero — pode ficar negativo (mais reembolso do que gasto)
   const months=[];for(let i=5;i>=0;i--)months.push(addMonthsYm(curMonth,-i));
   const histVals=months.map(m=>{
     const raw=DB.transactions.filter(t=>t.type==='saida'&&t.categoryId===catId&&!t.excludeTotal&&t.date.slice(0,7)===m).reduce((s,t)=>s+t.amountCents,0);
-    return Math.max(0,raw-monthCategoryRefundAdj(catId,m));
+    return raw-monthCategoryRefundAdj(catId,m);
   });
   const reembolsosHTML=reembolsos.length?`<div class="dgroup-h" style="margin-top:14px">Reembolsos vinculados (abatem o gasto acima)</div>
     <div class="row-list">${reembolsos.map(t=>`<div class="row" style="cursor:pointer" onclick="openTx('${t.id}')">
@@ -1585,11 +1593,11 @@ function renderCatDrill(catId){
     renderCatDrillChart(months,histVals,c);return;}
   box.innerHTML=`<div class="card" style="padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
       <div class="row-ico" style="background:${c.color}22;color:${c.color}">${c.emoji}</div>
-      <div style="flex:1"><div style="font-weight:600">${c.name}</div><div style="font-size:11.5px;color:var(--muted)">${list.length} lançamento(s) neste mês${refundAdj?' · '+money(refundAdj)+' reembolsado':''}</div></div>
-      <div class="num" style="font-family:var(--display);font-weight:600;font-size:18px">${money(sum)}</div></div>
+      <div style="flex:1"><div style="font-weight:600">${c.name}</div><div style="font-size:11.5px;color:var(--muted)">${list.length} lançamento(s) · gasto bruto ${money(rawSum)}${refundAdj?' · '+money(refundAdj)+' reembolsado':''}</div></div>
+      <div class="num" style="font-family:var(--display);font-weight:600;font-size:18px;${sum<0?'color:var(--entrada)':''}">${sum<0?'+':''}${money(Math.abs(sum))}</div></div>
     ${histHTML}
     <div class="row-list">${list.map(t=>{const f=formaById(t.formaId);
-      return `<div class="row" style="cursor:default"><div class="row-mid">
+      return `<div class="row" style="cursor:pointer" onclick="openTx('${t.id}')"><div class="row-mid">
         <div class="row-title">${esc(t.description||c.name)}</div>
         <div class="row-sub">${fmtDate(t.date)}${f?' · '+esc(f.name):''}${t.parcelado&&t.totalParcelas>1?' · '+t.parcela+'/'+t.totalParcelas:''}</div></div>
         <div class="num" style="font-weight:600">${money(t.amountCents)}</div></div>`;}).join('')}</div>
@@ -1903,10 +1911,15 @@ function renderTxSheet(){const t=txDraft;const cats=catsByKind(t.type);const sin
     <div class="field"><label>Categoria</label><select class="input" onchange="txDraft.categoryId=this.value;if(isMovimentacaoCat(this.value))txDraft.excludeTotal=true;renderTxSheet()">
       ${cats.map(c=>`<option value="${c.id}" ${t.categoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}</select></div>
 
-    ${isRefundCat(t.categoryId)?`<div class="field"><label>Abater do gasto de qual categoria?</label><select class="input" onchange="txDraft.refundCategoryId=this.value||null">
-      <option value="">Nenhuma (só entrada, não abate categoria)</option>
+    ${isRefundCat(t.categoryId)?`<div class="field"><label>Vincular a qual categoria?</label><select class="input" onchange="txDraft.refundCategoryId=this.value||null">
+      <option value="">Nenhuma (reembolso genérico, não vincula a nada)</option>
+      <optgroup label="Abater de uma saída">
       ${DB.categories.filter(c=>c.kind==='saida'&&!c.isCardPayment).sort((a,b)=>(a.order??0)-(b.order??0)).map(c=>`<option value="${c.id}" ${t.refundCategoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
-      </select><p style="font-size:11px;color:var(--muted);margin:4px 2px 0">Ex: você pagou R$200 de mercado e um amigo te devolveu R$100 — escolhendo Mercado aqui, o gasto real registrado nessa categoria vira R$100.</p></div>`:''}
+      </optgroup>
+      <optgroup label="Somar a uma entrada">
+      ${DB.categories.filter(c=>c.kind==='entrada'&&!c.isRefund).sort((a,b)=>(a.order??0)-(b.order??0)).map(c=>`<option value="${c.id}" ${t.refundCategoryId===c.id?'selected':''}>${c.emoji} ${c.name}</option>`).join('')}
+      </optgroup>
+      </select><p style="font-size:11px;color:var(--muted);margin:4px 2px 0">Vinculando a uma <b>saída</b> (ex: Mercado), o gasto real daquela categoria diminui. Vinculando a uma <b>entrada</b> (ex: Draxos), esse valor passa a contar como renda de verdade daquela fonte, em vez de ficar de fora do total do mês.</p></div>`:''}
 
     ${isMovimentacaoCat(t.categoryId)?
       '<p style="font-size:12px;color:var(--muted);margin:0 2px 14px">Categoria Movimentação — some automaticamente de "Entradas/Saídas do mês", mas continua entrando no saldo em caixa e na coluna Saldo dos lançamentos.</p>'
