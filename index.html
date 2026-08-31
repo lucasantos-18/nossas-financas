@@ -818,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.06-27'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.06-28'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1341,6 +1341,7 @@ function renderTx(){
     return true;};
   const scopeList=[...DB.transactions,...transfersAsTx(),...faturaFechamentosAsTx()].filter(scopeMatch); // a "realidade" do período — sempre completa
   const saldoMap=buildSaldoMap(scopeList); // calculado uma vez só, sobre o período inteiro, antes de qualquer filtro visual
+  const saldoContaMap=buildSaldoContaMap(scopeList);
   let list=scopeList.filter(displayMatch);
   const box=document.getElementById('txContent');
   if(!list.length){box.innerHTML=emptyHTML('🔍','Nada por aqui',scopeAll?'Nenhum lançamento encontrado.':'Sem lançamentos neste mês. Toque no + para adicionar.');return;}
@@ -1358,8 +1359,8 @@ function renderTx(){
         <div class="pi"><div class="l">Total parcelas</div><div class="v">${money(pinf.totalSum)}</div></div></div>`;
     }
     if(isDesktop()){
-      html+=parc.length?('<div class="section-h"><h2>Parcelas do mês</h2></div>'+txTable(parc,true,saldoMap)):'';
-      html+=`<div class="section-h"><h2>Lançamentos do mês</h2></div>`+txTable(normais,false,saldoMap);
+      html+=parc.length?('<div class="section-h"><h2>Parcelas do mês</h2></div>'+txTable(parc,true,saldoMap,saldoContaMap)):'';
+      html+=`<div class="section-h"><h2>Lançamentos do mês</h2></div>`+txTable(normais,false,saldoMap,saldoContaMap);
     }else{
       if(parc.length){html+='<div class="tx-day">Parcelas (da mais próxima de encerrar)</div>'+parc.map(txCard).join('');}
       let last='';html+='<div>';
@@ -1369,7 +1370,7 @@ function renderTx(){
     box.innerHTML=html;
   }else{
     list.sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
-    box.innerHTML=isDesktop()?txTable(list,false,saldoMap):list.map(txCard).join('');
+    box.innerHTML=isDesktop()?txTable(list,false,saldoMap,saldoContaMap):list.map(txCard).join('');
   }
   bindCards(box);
   initDragTxOnce();
@@ -1388,6 +1389,29 @@ function buildSaldoMap(scopeList){
   const antes=anchor?saldoNoFimDoDia(diaAntes):null;
   let run=antes!=null?antes:0;
   chrono.forEach(t=>{
+    if(t.type==='entrada'&&t.regime==='caixa'){run+=t.amountCents;saldoMap[t.id]=run;}
+    else if(t.type==='saida'&&t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
+    else saldoMap[t.id]=null;
+  });
+  return saldoMap;
+}
+// verdadeiro só pro que conta de fato como entrada/saída (mesmo critério de "Entradas/Saídas do mês") —
+// fora reembolso genérico, pagamento de fatura, "não contabilizar"/Movimentação, caixinhas e fechamentos
+function isCountableTx(t){
+  if(t.isTransfer||t.isFechamento)return false;
+  if(t.excludeTotal)return false;
+  if(t.type==='entrada'&&isRefundCat(t.categoryId)&&!(t.refundCategoryId&&catById(t.refundCategoryId).kind==='entrada'))return false;
+  if(t.type==='saida'&&isCardPaymentCat(t.categoryId))return false;
+  return true;
+}
+// "Saldo" (coluna nova) — roda só sobre o que conta de verdade, sempre a partir de zero no período
+// exibido (não usa o saldo inicial, porque essa coluna não representa o saldo real do banco,
+// é só um jeito de conferir o fluxo "limpo", sem reembolso/movimentação/etc. distorcendo)
+function buildSaldoContaMap(scopeList){
+  const chrono=[...scopeList].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
+  const saldoMap={};let run=0;
+  chrono.forEach(t=>{
+    if(!isCountableTx(t)){saldoMap[t.id]=null;return;}
     if(t.type==='entrada'&&t.regime==='caixa'){run+=t.amountCents;saldoMap[t.id]=run;}
     else if(t.type==='saida'&&t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
     else saldoMap[t.id]=null;
@@ -1418,16 +1442,19 @@ function txCard(t){
     <div class="tx-mid"><div class="tx-desc">${esc(t.description||c.name)}${ptag}${excTag}</div>
       <div class="tx-meta">${c.name}${f?' · '+esc(f.name):''}${t.cartao?' · '+esc(t.cartao):''}</div></div>
     <div class="tx-amt ${isRef?'':(t.type==='entrada'?'in':'out')}" style="${isRef?'color:var(--transfer)':''}">${sign} ${money(t.amountCents)}</div></button>`;}
-function txTable(list,isParc,saldoMap){
+function txTable(list,isParc,saldoMap,saldoContaMap){
   if(!list.length)return '<div class="empty" style="padding:20px"><p>Nada aqui.</p></div>';
   saldoMap=saldoMap||buildSaldoMap(list); // fallback de segurança, caso algum chamador antigo não passe o mapa
-  const rows=list.map(t=>{const pc=parcClass(t);const sld=saldoMap[t.id];
+  saldoContaMap=saldoContaMap||buildSaldoContaMap(list);
+  const rows=list.map(t=>{const pc=parcClass(t);const sld=saldoMap[t.id];const sldC=saldoContaMap[t.id];
+    const sldCTd=`<td class="r td-num" style="font-weight:600;color:${sldC==null?'var(--muted-2)':sldC<0?'var(--saida)':'var(--ink)'}">${sldC==null?'—':money(sldC)}</td>`;
     const handle=isParc?'':`<td class="td-handle"><span class="dhandle-tx" title="Arrastar para reordenar">⠿</span></td>`;
     if(t.isFechamento){const forma=t._forma;
       return `<tr data-id="${t.id}" ${isParc?'':`data-tid="${t.id}"`}>
         ${handle}
         <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
         <td class="r td-num">—</td><td class="r td-num">—</td>
+        ${sldCTd}
         <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
         <td style="text-align:center"><span class="mini-tag" style="background:var(--paper-2);color:var(--muted)">Fechamento</span></td>
         <td class="td-num" style="text-align:center">—</td>
@@ -1441,6 +1468,7 @@ function txTable(list,isParc,saldoMap){
         <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
         <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='entrada'?money(t.amountCents):''}</td>
         <td class="r td-num" style="color:var(--transfer);font-weight:600">${t.type==='saida'?money(t.amountCents):''}</td>
+        ${sldCTd}
         <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
         <td style="text-align:center"><span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Caixinha</span></td>
         <td class="td-num" style="text-align:center">—</td>
@@ -1456,6 +1484,7 @@ function txTable(list,isParc,saldoMap){
       <td class="td-num" style="text-align:center">${fmtDate(t.date)}</td>
       <td class="r td-num ${isRef?'':'in'}" style="${isRef?'color:var(--transfer);font-weight:600':''}">${t.type==='entrada'?money(t.amountCents):''}</td>
       <td class="r out td-num">${t.type==='saida'?money(t.amountCents):''}</td>
+      ${sldCTd}
       <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
       <td style="text-align:center">${isRef?`<span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Reembolso · ${t.regime==='caixa'?'Caixa':'Comp'}</span>`:`<span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span>`}</td>
       <td class="td-num" style="text-align:center">${parc}</td>
@@ -1467,7 +1496,7 @@ function txTable(list,isParc,saldoMap){
   const handleTh=isParc?'':'<th class="td-handle"></th>';
   return `<div class="tbl-wrap"><table class="tx-tbl tx-tbl2 ${isParc?'':'sortable-tx'}"><thead><tr>
     ${handleTh}
-    <th class="c-data" style="text-align:center">Data</th><th class="r c-val">Entrada</th><th class="r c-val">Saída</th><th class="r c-val">Saldo</th>
+    <th class="c-data" style="text-align:center">Data</th><th class="r c-val">Entrada</th><th class="r c-val">Saída</th><th class="r c-val">Saldo</th><th class="r c-val">Saldo Real</th>
     <th class="c-regime" style="text-align:center">Regime</th><th class="c-parc" style="text-align:center">Parc</th>
     <th class="c-forma">Forma</th><th class="c-cartao" style="text-align:center">Cartão</th><th>Categoria</th><th>Descrição</th><th class="c-edit"></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 function bindCards(scope){scope.querySelectorAll('[data-id]').forEach(b=>b.onclick=e=>{e.stopPropagation();
