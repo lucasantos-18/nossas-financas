@@ -818,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.05-24'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.05-25'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1003,43 +1003,43 @@ function monthRefundSum(ym,onlyCaixa){return monthTx(ym).filter(t=>t.type==='ent
    não ter o histórico completo lançado: em vez de tentar calcular desde sempre (o que dá
    errado sem todos os lançamentos antigos), parte de um valor que o usuário sabe que estava
    correto numa data, e só soma/subtrai o que foi de fato lançado dali pra frente. */
+function addDaysStr(dateStr,days){const d=new Date(dateStr+'T00:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);}
 function saldoCaixaAcumulado(ymFim){
   const ini=DB.settings?.saldoInicialData;
   if(!ini)return null;
   const fim=ymFim+'-32'; // maior que qualquer dia real do mês, garante pegar o mês inteiro
-  return saldoCaixaAntesDe(fim);
+  return saldoNoFimDoDia(fim);
 }
-// saldo acumulado considerando TUDO com data < dataLimite (exclusive) — usado tanto pelo card
-// da Início quanto pela coluna Saldo da tabela de Lançamentos, pra sempre partir do mesmo lugar.
-// saldo acumulado considerando TUDO com data < dataLimite (exclusive) — a partir da data-âncora,
-// pra frente (soma o que vier depois) OU pra trás (desfaz o que veio antes), sempre baseado
-// no que estiver realmente lançado. Assim um lançamento anterior à âncora também fica coerente:
-// se você sabe que em 17/08 tinha R$1.440,21 e tem uma entrada real de R$120 em 12/08, o saldo logo
-// após aquele lançamento já mostra o valor certo, sem precisar de todo o histórico antes disso.
-function saldoCaixaAntesDe(dataLimite){
+// saldo no FIM de um dia — é assim que o saldo inicial deve ser lido: "no dia X, ao final
+// de tudo que aconteceu naquele dia, eu tinha Y". Por isso a soma pra frente só começa no dia
+// SEGUINTE à âncora (o dia da âncora já está embutido no valor informado), e a reconstrução
+// pra trás desfaz até o dia da âncora (inclusive), nunca depois dele.
+// Corrige também um bug antigo: toda entrada contava no saldo, mesmo quando o regime era
+// competência (caso do reembolso de fatura de cartão, que não é dinheiro de verdade).
+function saldoNoFimDoDia(date){
   const ini=DB.settings?.saldoInicialData;
   if(!ini)return null;
   let saldo=DB.settings.saldoInicialCents||0;
-  if(dataLimite>=ini){
-    DB.transactions.filter(t=>t.date>=ini&&t.date<dataLimite).forEach(t=>{
-      if(t.type==='entrada')saldo+=t.amountCents;
-      else if(t.regime==='caixa')saldo-=t.amountCents;
+  if(date>ini){
+    DB.transactions.filter(t=>t.date>ini&&t.date<=date).forEach(t=>{
+      if(t.type==='entrada'&&t.regime==='caixa')saldo+=t.amountCents;
+      else if(t.type==='saida'&&t.regime==='caixa')saldo-=t.amountCents;
     });
-    (DB.transfers||[]).filter(tr=>tr.date>=ini&&tr.date<dataLimite).forEach(tr=>{
+    (DB.transfers||[]).filter(tr=>tr.date>ini&&tr.date<=date).forEach(tr=>{
       if(tr.direction==='in')saldo-=tr.amountCents;
       else if(tr.direction==='out')saldo+=tr.amountCents;
     });
-  }else{
-    DB.transactions.filter(t=>t.date>=dataLimite&&t.date<ini).forEach(t=>{
-      if(t.type==='entrada')saldo-=t.amountCents;
-      else if(t.regime==='caixa')saldo+=t.amountCents;
+  }else if(date<ini){
+    DB.transactions.filter(t=>t.date>date&&t.date<=ini).forEach(t=>{
+      if(t.type==='entrada'&&t.regime==='caixa')saldo-=t.amountCents;
+      else if(t.type==='saida'&&t.regime==='caixa')saldo+=t.amountCents;
     });
-    (DB.transfers||[]).filter(tr=>tr.date>=dataLimite&&tr.date<ini).forEach(tr=>{
+    (DB.transfers||[]).filter(tr=>tr.date>date&&tr.date<=ini).forEach(tr=>{
       if(tr.direction==='in')saldo+=tr.amountCents;
       else if(tr.direction==='out')saldo-=tr.amountCents;
     });
   }
-  return saldo;
+  return saldo; // date===ini: é literalmente o valor informado, já é o fim daquele dia
 }
 function saveSaldoInicial(){
   const cents=digitsToCents(document.getElementById('saldoIniAmt').value);
@@ -1378,11 +1378,14 @@ function renderTx(){
 function buildSaldoMap(scopeList){
   const chrono=[...scopeList].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
   const saldoMap={};
-  const antes=chrono.length?saldoCaixaAntesDe(chrono[0].date):null;
+  if(!chrono.length)return saldoMap;
+  const anchor=DB.settings?.saldoInicialData;
+  const diaAntes=addDaysStr(chrono[0].date,-1);
+  const antes=anchor?saldoNoFimDoDia(diaAntes):null;
   let run=antes!=null?antes:0;
   chrono.forEach(t=>{
-    if(t.type==='entrada'){run+=t.amountCents;saldoMap[t.id]=run;}
-    else if(t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
+    if(t.type==='entrada'&&t.regime==='caixa'){run+=t.amountCents;saldoMap[t.id]=run;}
+    else if(t.type==='saida'&&t.regime==='caixa'){run-=t.amountCents;saldoMap[t.id]=run;}
     else saldoMap[t.id]=null;
   });
   return saldoMap;
@@ -1450,7 +1453,7 @@ function txTable(list,isParc,saldoMap){
       <td class="r td-num ${isRef?'':'in'}" style="${isRef?'color:var(--transfer);font-weight:600':''}">${t.type==='entrada'?money(t.amountCents):''}</td>
       <td class="r out td-num">${t.type==='saida'?money(t.amountCents):''}</td>
       <td class="r td-num" style="font-weight:600;color:${sld==null?'var(--muted-2)':sld<0?'var(--saida)':'var(--ink)'}">${sld==null?'—':money(sld)}</td>
-      <td style="text-align:center">${isRef?'<span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Reembolso</span>':`<span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span>`}</td>
+      <td style="text-align:center">${isRef?`<span class="mini-tag" style="background:var(--transfer-bg);color:var(--transfer)">Reembolso · ${t.regime==='caixa'?'Caixa':'Comp'}</span>`:`<span class="mini-tag">${t.regime==='caixa'?'Caixa':'Comp'}</span>`}</td>
       <td class="td-num" style="text-align:center">${parc}</td>
       <td>${f?esc(f.name):''}</td>
       <td class="td-num" style="text-align:center">${esc(t.cartao||'—')}</td>
@@ -2954,7 +2957,7 @@ async function pendConfirm(){
     DB.transactions.push({id:uid(),type:'saida',amountCents:p.amountCents,date:p.date,regime:p.regime,
       parcelado:false,parcela:1,totalParcelas:1,parcelaGroup:null,
       formaId:p.formaId,cartao:'',categoryId:p.categoryId,description:p.name,
-      note:'Da notificação do banco',createdAt:Date.now()});
+      note:p.rawText?p.rawText:'Da notificação do banco',createdAt:Date.now()});
   });
   save();
   closeSheet();
