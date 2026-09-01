@@ -818,7 +818,7 @@ let DB=null, USER=null;
 let curMonth=ymKey(new Date());
 let scopeAll=false, txFilter='all', editingTx=null;
 const SCHEMA=5;
-const APP_VERSION='2026.07.06-28'; // atualize esse número a cada deploy pra identificar a versão no navegador
+const APP_VERSION='2026.07.06-30'; // atualize esse número a cada deploy pra identificar a versão no navegador
 function showAppVersion(){
   document.getElementById('appVersionTag')&&(document.getElementById('appVersionTag').textContent='v'+APP_VERSION);
   document.getElementById('appVersionTag2')&&(document.getElementById('appVersionTag2').textContent='v'+APP_VERSION);
@@ -1404,9 +1404,9 @@ function isCountableTx(t){
   if(t.type==='saida'&&isCardPaymentCat(t.categoryId))return false;
   return true;
 }
-// "Saldo" (coluna nova) — roda só sobre o que conta de verdade, sempre a partir de zero no período
-// exibido (não usa o saldo inicial, porque essa coluna não representa o saldo real do banco,
-// é só um jeito de conferir o fluxo "limpo", sem reembolso/movimentação/etc. distorcendo)
+// "Saldo" (coluna nova) — reflete só o movimento do período exibido (mês ou tudo), sempre
+// começando do zero — não é o saldo do banco, é só "quanto entrou/saiu de verdade" ali.
+// "Saldo Real" (buildSaldoMap) é quem deve sempre refletir o saldo de verdade da conta.
 function buildSaldoContaMap(scopeList){
   const chrono=[...scopeList].sort((a,b)=>a.date.localeCompare(b.date)||((a.sortIndex??a.createdAt)-(b.sortIndex??b.createdAt)));
   const saldoMap={};let run=0;
